@@ -1,0 +1,4 @@
+Rhythm_Up :: class : Ability_Base {
+    on_init :: method() { name="Up"; icon=get_asset(Texture_Asset,arrow_paths[2]); keybind_override=rhythm_keys[2]; draw_but_dont_use_keybind=true; }
+    on_update :: method(params: ref Ability_Update_Params) { rhythm_input(player,ref params,2); }
+}

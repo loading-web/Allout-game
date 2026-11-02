@@ -1,0 +1,31 @@
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex 1301e01..32b97a2 100644[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@ -147,3 +147,26 @@[m [mvite.config.ts.timestamp-*[m
+ [m
+ # Turbo Repo[m
+ .turbo[m
+[32m+[m[32mobj[m
+[32m+[m[32mAssembly.csproj[m
+[32m+[m[32mscene_backups[m
+[32m+[m[32mscene_temp[m
+[32m+[m[32m.idea[m
+[32m+[m[32m*.ao[m
+[32m+[m[32m*.ao.astc[m
+[32m+[m[32masset_report.txt[m
+[32m+[m[32mres/.preprocessed[m
+[32m+[m[32mres/.upload_cache[m
+[32m+[m[32m.asset_manifest.txt[m
+[32m+[m[32m*.psd[m
+[32m+[m[32m.agents[m
+[32m+[m[32m.claude[m
+[32m+[m[32m.codex[m
+[32m+[m[32m.ao[m
+[32m+[m[32m.mcp.json[m
+[32m+[m[32mopencode.json[m
+[32m+[m[32m.gemini[m
+[32m+[m[32m.cursor[m
+[32m+[m[32mAGENTS.md[m
+[32m+[m[32mCLAUDE.md[m
+[32m+[m[32mao_debug.lock[m

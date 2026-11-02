@@ -1,0 +1,15 @@
+start_receptor_burst :: proc(p: Player,index: int,rating: int) {
+    if rating==4 || p.reduced_motion { return; }
+    desc:=Particle_System_Desc.preset_sparks();
+    desc.simulation_space=.LOCAL; desc.sprite=get_asset(Texture_Asset,"UI/fill.png");
+    desc.emission=Particle_Emission.burst(rating==0 ? 18 : (rating==1 ? 10 : 4)); desc.prewarm=false;
+    desc.direction={0,1}; desc.direction_spread_degrees=360;
+    desc.spawn_position_radius=10; desc.speed=Particle_System_Desc.range_float(70,160);
+    desc.gravity={0,-100}; desc.lifetime=Particle_System_Desc.range_float(0.16,0.4);
+    desc.size_over_lifetime=Particle_System_Desc.over_lifetime_v2({5,5},{1,1});
+    desc.color_over_lifetime=Particle_System_Desc.over_lifetime_v4(rating_colors[rating],{1,1,1,0});
+    p.receptor_fx[index]=desc;
+    state: Particle_System_Desc.State; state.initialized=true; state.seed=mix_u64(get_frame_number(),index.(u64));
+    state.start_time=get_time(); state.configured_slot_count=desc.get_particle_count();
+    p.receptor_state[index]=state;
+}

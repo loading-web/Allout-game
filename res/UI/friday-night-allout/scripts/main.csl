@@ -1,0 +1,304 @@
+import "core:ao"
+import "rhythm"
+
+rhythm_keys: [4]Keybind;
+calibration_key: Keybind;
+intro_lesson: Tutorial;
+ao_before_scene_load :: proc() {
+    register_controls();
+    calibration_key = Keybinds.register("Calibration Tap", .SPACE);
+    rhythm_keys[0] = Keybinds.register("Rhythm Left", .LEFT);
+    rhythm_keys[1] = Keybinds.register("Rhythm Down", .DOWN);
+    rhythm_keys[2] = Keybinds.register("Rhythm Up", .UP);
+    rhythm_keys[3] = Keybinds.register("Rhythm Right", .RIGHT);
+    intro_lesson = Tutorial.define("encore_intro_v1", .{
+        Tutorial_Step.click("play", Tutorial_Target.ui(get_asset(UIDoc_Asset, "UI/encore.uidoc"), "play"), text="Start your soundcheck.", complete_when=intro_started),
+        Tutorial_Step.event("hit", "encore:hit", count=4, text="Match the arrows on the beat.", complete_when=intro_learned),
+    }, show_panel=false);
+}
+intro_started :: proc(p: Player) -> bool { return p.screen == 2 || p.rounds > 0; }
+intro_learned :: proc(p: Player) -> bool { return p.total_hits >= 4; }
+
+ao_start :: proc() {
+
+}
+
+ao_update :: proc(dt: float) {
+
+}
+
+ao_late_update :: proc(dt: float) {
+
+}
+
+// Per player state. This is THE Player class for the game: extend it here rather than
+// declaring another `Player :: class : Player_Base` in a different file (that is a name
+// collision, since every script shares one global scope).
+Player :: class : Player_Base {
+    perf_active: bool;
+    perf_scenario: int;
+    perf_generation: int;
+    perf_started: float;
+    perf_original_work: Song_Mod;
+    voice_sequence: u64;
+    voice_cursor: int;
+    voice_variants: [8]int;
+    voice_last_syllable: [2]int;
+    voice_editor_side: int = 1;
+    voice_preview: Rhythm_Note;
+    voice_preview_end: float;
+    controls: [7]int;
+    custom_controls: [4]int;
+    control_preset: int;
+    capture_control: int = -1;
+    touch_size: float = 1;
+    touch_position: int;
+    touch_alpha: float = 1;
+    touch_sensitivity: float = 1;
+    touch_hold_time: [4]float;
+    story_active: bool;
+    story_week: int;
+    story_score: int;
+    story_misses: int;
+    story_judged: int;
+    story_weight: float;
+    story_new_unlock: bool;
+    story_deadline: float;
+    options_category: int;
+    calibration_start: float;
+    calibration_next_beat: int;
+    calibration_last_tap: int = -1;
+    calibration_samples: [..]float;
+    calibration_done: bool;
+    calibration_recommendation: int;
+    calibration_message: string;
+    calibration_audio: [..]u64;
+    menu_audio_id: u64;
+    menu_audio_start: float;
+    screen: int = 16;
+    intro_started_at: float;
+    intro_message: int;
+    title_confirmed_at: float;
+    title_chat_was_open: bool;
+    song: int;
+    difficulty: int;
+    bot_level: int = 1;
+    mode: int;
+    stage: int;
+    in_test: bool;
+    using_custom: bool;
+    start_time: float;
+    song_time: float;
+    previous_song_time: float;
+    song_length: float;
+    bpm: float = 120;
+    beat: int = -1;
+    audio_id: u64;
+    music_started: bool;
+    health: float = 50;
+    bot_health: float = 50;
+    score: int;
+    bot_score: int;
+    combo: int;
+    best_combo: int;
+    misses: int;
+    judged: int;
+    bot_judged: int;
+    bot_misses: int;
+    weight: float;
+    bot_weight: float;
+    rating_counts: [5]int;
+    notes: [..]Rhythm_Note;
+    // Same-player derived indexes; ownership elsewhere remains user-id based.
+    note_timeline: [..]Rhythm_Note;
+    note_index_count: int = -1;
+    note_cursor: int;
+    note_max_hold: float;
+    active_sustains: [..]Rhythm_Note;
+    lane_held: [4]bool;
+    lane_flash: [8]float;
+    lane_rating: [8]int;
+    player_direction: int;
+    bot_direction: int;
+    player_pose_time: float = -10;
+    bot_pose_time: float = -10;
+    player_missed: bool;
+    bot_missed: bool;
+    rating: int;
+    rating_time: float = -10;
+    milestone: int;
+    milestone_time: float = -10;
+    result: string;
+    result_saved: bool;
+    rounds: int;
+    wins: int;
+    total_hits: int;
+    achievements: int;
+    unlocked_name: string;
+    unlocked_time: float = -10;
+    record: int;
+    volume: float = 0.65;
+    offset_ms: int;
+    scroll_speed: float = 1;
+    reduced_motion: bool;
+    ghost_taps: bool = true;
+    downscroll: bool;
+    visual_health: float = 0.5;
+    health_interp: Float_Interpolation_Helper;
+    opponent_id: string;
+    challenger_id: string;
+    invited_id: string;
+    waiting_duel: bool;
+    duel_finished: bool;
+    requested_song: int;
+    requested_difficulty: int;
+    requested_mode: int = 2;
+    friend_mode: int = 2;
+    equipped_style: int = -1;
+    public_mods: [..]Published_Mod;
+    custom_library: Mod_Library;
+    work: Song_Mod;
+    playing_mod: Song_Mod;
+    chart_cursor: int;
+    chart_history_work: Song_Mod;
+    chart_undo: [..]Chart_Snapshot;
+    chart_redo: [..]Chart_Snapshot;
+    editor_tab: int;
+    editor_page: int;
+    editor_side: int = 1;
+    editor_tool: int;
+    editor_hold: int;
+    editor_snap: int = 1;
+    editor_zoom: float = 1;
+    selection: [..]int;
+    clipboard: [..]Chart_Note;
+    pending_delete_mod: string;
+    selected_prop: int;
+    selected_event: int;
+    dirty: bool;
+    save_due: float;
+    editor_status: string = "Autosaved";
+    import_code: string;
+    export_code: string;
+    pending_publication: string;
+    publish_code: string;
+    publish_started: float;
+    publish_check_due: float;
+    unpublish_code: string;
+    unpublish_started: float;
+    unpublish_check_due: float;
+    community_selected: string;
+    cutscene_seen: bool;
+    preview_playing: bool;
+    preview_id: u64;
+    preview_start: float;
+    preview_only: bool;
+    receptor_fx: [8]Particle_System_Desc;
+    receptor_state: [8]Particle_System_Desc.State;
+    previous_screen: int = -1;
+    screen_changed: float;
+    next_mod_id: int;
+    ao_start :: method() {
+        migrate_story_progress(this);
+        load_controls(this);
+        volume = clamp(Save.get_float(this, "encore_volume", 0.65),0,1);
+        equipped_style = clamp(Save.get_int(this,"encore_style",-1),-1,17);
+        offset_ms = clamp(Save.get_int(this, "encore_offset", 0), -200, 200);
+        scroll_speed = clamp(Save.get_float(this, "encore_speed", 1), 0.6, 1.8);
+        reduced_motion = Save.get_int(this, "encore_motion", 0) == 1;
+        ghost_taps = Save.get_int(this, "encore_ghost", 1) == 1;
+        downscroll = Save.get_int(this, "encore_down", 0) == 1;
+        rounds = Save.get_int(this, "encore_rounds", 0);
+        wins = Save.get_int(this, "encore_wins", 0);
+        total_hits = Save.get_int(this, "encore_hits", 0);
+        achievements = Save.get_int(this, "encore_achievements", 0);
+        next_mod_id = Save.get_int(this, "encore_nextmod", 1);
+        if !Save.try_get_json(this, "encore_library_v1", ref custom_library) || custom_library == null { custom_library = new(Mod_Library); }
+        for m: custom_library.mods { sanitize_mod(m); }
+        work = new_song_mod();
+        if custom_library.mods.count > 0 { work = clone_mod(custom_library.mods[0]); }
+        add_freeze_reason("rhythm_stationary");
+        add_joystick_disable_reason("rhythm_stationary");
+        add_emote_block_reason("rhythm_stationary");
+        add_invisibility_reason("rhythm_avatar");
+        add_name_invisibility_reason("rhythm_avatar");
+        entity.set_world_position({5.2, -2.6}); entity.mark_teleported();
+        camera.follow_player = false; camera.position = {0, 0}; camera.size = 7;
+        spawn_ensemble(this);
+        intro_started_at = get_time();
+        intro_rng := rng_root_seed();
+        intro_message = rng_range_int(ref intro_rng,0,3);
+    }
+
+    ao_update :: method(dt: float) {
+        update_title_sequence(this);
+        if previous_screen!=screen { previous_screen=screen; screen_changed=get_time(); }
+        if challenger_id.count>0 {
+            inviter:=find_player(challenger_id);
+            if inviter==null || !inviter.waiting_duel || inviter.screen!=8 { challenger_id=""; }
+        }
+        if waiting_duel && invited_id.count>0 {
+            invitee:=find_player(invited_id);
+            if invitee==null || invitee.screen!=8 || invitee.challenger_id!=get_user_id() { waiting_duel=false; invited_id=""; }
+        }
+        update_publication(this);
+        update_unpublication(this);
+        if dirty && get_time() >= save_due { save_work(this); }
+        if preview_playing && get_time() - preview_start > 16.0 * 60 / work.bpm { SFX.stop(preview_id); preview_playing = false; }
+        if screen == 2 {
+            if perf_active {
+                health=100;
+                for lane: 0..<4 { lane_held[lane]=true; press_lane(this,lane); }
+            }
+            update_song(this, dt);
+        }
+        update_character_voices(this);
+        update_story_and_calibration(this);
+        update_menu_music(this);
+        if opponent_id.count > 0 && screen == 2 && find_player(opponent_id) == null { opponent_id = ""; finish_song(this, "RIVAL LEFT"); }
+    }
+
+    ao_late_update :: method(dt: float) {
+        if !is_local_or_server() { return; }
+        perf_clock: s64;
+        if perf_active && is_local() { perf_clock=get_nanoseconds_since_epoch(); }
+        defer { if perf_clock!=0 { perf_record(this,perf_clock); } }
+        update_control_input(this);
+        update_rhythm_camera(this, dt);
+        draw_encore(this, dt);
+        if screen==13 && Keybinds.get_keybind_down(this,calibration_key) { calibration_tap(this); }
+        if screen == 2 {
+            draw_rhythm_controls(this);
+            draw_battle_notes(this);
+        }
+    }
+
+    ao_end :: method() {
+        stop_character_voices(this);
+        stop_calibration(this);
+        SFX.stop(menu_audio_id);
+        if dirty { save_work(this); }
+        SFX.stop(audio_id); SFX.stop(preview_id);
+        Save.set_int(this, "encore_hits", total_hits);
+        for actor: component_iterator(Rhythm_Performer) { if actor.owner_id == get_user_id() { actor.entity.destroy(); } }
+        for prop: component_iterator(Rhythm_Prop) { if prop.owner_id == get_user_id() { prop.entity.destroy(); } }
+    }
+
+    ao_can_use_ability :: method(ability: Ability_Base) -> bool {
+        return screen == 2 && song_time >= -0.18 && song_time < song_length && health > 0;
+    }
+
+    ao_can_use_interactable :: method(interactable: Interactable) -> bool {
+        // Global interactable callback
+        return true;
+    }
+
+    ao_on_state_sync :: method() {
+        // Called on the client after applying a state sync from the server
+        // Use this to override things for the local player only like name colors or lighting for example
+    }
+}
+
+
+
+

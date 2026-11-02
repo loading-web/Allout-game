@@ -1,0 +1,11 @@
+{
+    csl: true
+    manual_mip_divisor: 32
+    projects:
+    [
+        {
+            name: "Rhythm Battle Game Desig"
+            id: "6a5d794904e73685df03f38b"
+        }
+    ]
+}

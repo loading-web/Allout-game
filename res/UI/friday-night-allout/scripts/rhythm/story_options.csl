@@ -1,0 +1,164 @@
+// Five self-contained weeks. Completing one never auto-starts the next.
+// Preserve legacy unlock access, but not incomparable old chart scores/FCs.
+migrate_story_progress :: proc(p: Player) {
+    if Save.get_int(p,"encore_story_version",0)>=2 { return; }
+    if Save.get_int(p,"encore_week_complete_0",0)==1 {
+        Save.set_int(p,"encore_week_v2_complete_0",1);
+        Save.set_int(p,"encore_week_v2_complete_1",1);
+    }
+    if Save.get_int(p,"encore_week_complete_1",0)==1 {
+        Save.set_int(p,"encore_week_v2_complete_2",1);
+        Save.set_int(p,"encore_week_v2_complete_3",1);
+    }
+    if Save.get_int(p,"encore_week_complete_2",0)==1 { Save.set_int(p,"encore_week_v2_complete_4",1); }
+    Save.set_int(p,"encore_story_version",2);
+}
+week_unlocked :: proc(p: Player, week: int) -> bool {
+    return week==0 || (week>0 && week<5 && Save.get_int(p,`encore_week_v2_complete_{week-1}`,0)==1);
+}
+start_week :: proc(p: Player, week: int) {
+    if week<0 || week>=5 || !week_unlocked(p,week) { return; }
+    p.story_active=true; p.story_week=week; p.story_score=0; p.story_misses=0;
+    p.story_judged=0; p.story_weight=0; p.story_new_unlock=false;
+    p.mode=0; p.song=week_first[week]; p.opponent_id="";
+    begin_song(p);
+}
+story_song_finished :: proc(p: Player) {
+    if !p.story_active || p.using_custom || p.in_test || p.mode!=0 || p.result!="VICTORY" { return; }
+    p.story_score+=p.score; p.story_misses+=p.misses;
+    p.story_judged+=p.judged; p.story_weight+=p.weight;
+    if p.song < week_last[p.story_week] {
+        p.screen=14; p.story_deadline=get_time()+1.5;
+        return;
+    }
+    first:=Save.get_int(p,`encore_week_v2_complete_{p.story_week}`,0)==0;
+    Save.set_int(p,`encore_week_v2_complete_{p.story_week}`,1);
+    key:=`encore_week_v2_best_{p.story_week}_{p.difficulty}`;
+    Save.set_int(p,key,max(p.story_score,Save.get_int(p,key,0)));
+    if p.story_misses==0 { Save.set_int(p,`encore_week_v2_fc_{p.story_week}_{p.difficulty}`,1); }
+    p.story_new_unlock=first && p.story_week<4;
+    p.screen=11; p.story_deadline=get_time()+6;
+}
+return_to_weeks :: proc(p: Player) {
+    p.story_active=false; p.screen=10; p.in_test=false; p.using_custom=false;
+    SFX.stop(p.audio_id); p.audio_id=0;
+}
+update_story_and_calibration :: proc(p: Player) {
+    if p.screen==14 && get_time()>=p.story_deadline {
+        // The final song cannot enter this branch, even after a state sync.
+        if p.story_active && p.song>=week_first[p.story_week] && p.song<week_last[p.story_week] {
+            p.song+=1; begin_song(p);
+        } else { return_to_weeks(p); }
+    }
+    if p.screen==11 && get_time()>=p.story_deadline { p.screen=12; }
+    if p.screen!=13 || p.calibration_done { return; }
+    elapsed:=get_time()-p.calibration_start;
+    p.calibration_next_beat=floor(elapsed/0.5).(int);
+    if elapsed>18 {
+        stop_calibration(p); p.calibration_done=true;
+        p.calibration_message="Not enough steady taps. Try again.";
+    }
+}
+stop_calibration :: proc(p: Player) {
+    for id: p.calibration_audio { SFX.stop(id); }
+    p.calibration_audio.clear();
+}
+start_calibration :: proc(p: Player) {
+    stop_calibration(p);
+    p.screen=13; p.calibration_start=get_time()+1; p.calibration_next_beat=-1;
+    p.calibration_last_tap=-1; p.calibration_done=false; p.calibration_samples.clear();
+    p.calibration_message="Listen for four beats, then tap 12 times.";
+    // Schedule from one clock, rather than letting frame timing drift each beat.
+    for i: 0..<36 {
+        desc:=SFX.default_sfx_desc(); desc.specific_to_player=p; desc.entity_to_follow=p.entity.id;
+        desc.delay=1+i.(float)*0.5; desc.volume=max(0.2,p.volume)*0.7; desc.speed_perturb=0;
+        p.calibration_audio.append(SFX.play(get_asset(SFX_Asset,"sfx/click.wav"),desc));
+    }
+}
+calibration_tap :: proc(p: Player) {
+    if p.screen!=13 || p.calibration_done { return; }
+    elapsed:=get_time()-p.calibration_start;
+    beat:=round(elapsed/0.5).(int);
+    if beat<4 || beat==p.calibration_last_tap { return; }
+    delta:=elapsed-beat.(float)*0.5;
+    if abs(delta)>0.2 { p.calibration_message="Stay with the beat. Keep tapping."; return; }
+    p.calibration_last_tap=beat; p.calibration_samples.append(delta*1000);
+    p.calibration_message=`{p.calibration_samples.count} / 12 taps`;
+    if p.calibration_samples.count<12 { return; }
+    // Trim two extremes at either end, then reject inconsistent measurements.
+    for i: 0..<12 { for j: i+1..<12 {
+        if p.calibration_samples[j]<p.calibration_samples[i] {
+            temp:=p.calibration_samples[i]; p.calibration_samples[i]=p.calibration_samples[j]; p.calibration_samples[j]=temp;
+        }
+    } }
+    p.calibration_done=true; stop_calibration(p);
+    if p.calibration_samples[9]-p.calibration_samples[2]>80 {
+        p.calibration_message="Taps varied too much. Try again."; return;
+    }
+    sum:=0.0; for i: 2..<10 { sum+=p.calibration_samples[i]; }
+    // Gameplay adds the offset to its clock: late taps therefore require a negative offset.
+    p.calibration_recommendation=clamp(round(-sum/8).(int),-200,200);
+    p.calibration_message="Apply this timing offset?";
+}
+bind_story_options :: proc(p: Player) {
+    UI.uidoc_bind_bool("weeks",p.screen==10);
+    UI.uidoc_bind_bool("week-ending",p.screen==11);
+    UI.uidoc_bind_bool("week-result",p.screen==12);
+    UI.uidoc_bind_bool("song-transition",p.screen==14);
+    UI.uidoc_bind_bool("calibration",p.screen==13);
+    UI.uidoc_bind_bool("week-unlocked",p.story_new_unlock);
+    UI.uidoc_bind_text("week-title",`WEEK {p.story_week+1} / {week_names[p.story_week]}`);
+    UI.uidoc_bind_text("week-score",int_text(p.story_score));
+    UI.uidoc_bind_text("week-misses",int_text(p.story_misses));
+    UI.uidoc_bind_text("week-accuracy",p.story_judged>0 ? float_text(p.story_weight/p.story_judged.(float)*100,decimals=2)+"%" : "100%");
+    UI.uidoc_bind_text("week-combo",p.story_misses==0 ? "FULL COMBO!" : "WEEK COMPLETE!");
+    UI.uidoc_bind_text("next-title",song_names[min(p.song+1,week_last[p.story_week])]);
+    UI.uidoc_bind_text("ending-line",([5]string){"Your first hook lights up the rooftop!","The night moves to your rhythm!","Voltage down. You won the clash!","You found the pulse inside the paradox!","The stars answer back. This encore belongs to you!"}[p.story_week]);
+    UI.uidoc_bind_float("tag-pulse",p.reduced_motion ? 1 : 1+0.025*pow(1-((get_time()-p.menu_audio_start)*2)%1,4));
+    UI.uidoc_bind_float("ending-rise",p.reduced_motion ? 0 : -min(25,max(0,6-(p.story_deadline-get_time()))*4));
+    UI.uidoc_bind_text("calibration-message",p.calibration_message);
+    UI.uidoc_bind_text("calibration-offset",(p.calibration_recommendation>=0 ? "+" : "")+int_text(p.calibration_recommendation)+" ms");
+    UI.uidoc_bind_bool("calibration-running",!p.calibration_done);
+    UI.uidoc_bind_bool("calibration-apply",p.calibration_done && p.calibration_message=="Apply this timing offset?");
+    UI.uidoc_bind_float("calibration-pulse",p.reduced_motion ? 1 : 1+0.12*pow(1-(max(0,get_time()-p.calibration_start)*2)%1,4));
+    UI.uidoc_bind_text("options-info",([6]string){"Make the chart feel right.","Your keys. Your flow.","Calibrate again after changing your headphones or display.","A calmer stage, the same beat.","Your flow. Your comfort.","Progress and best scores save automatically. Replays never erase records."}[p.options_category]);
+    UI.uidoc_bind_bool("show-calibrate",p.options_category==2);
+    UI.uidoc_begin_list("option-categories");
+    for i: 0..<6 {
+        UI.uidoc_list_item(int_text(i));
+        UI.uidoc_list_bind_text("name",([6]string){"Gameplay","Controls","Audio","Video","Accessibility","Save Data"}[i]);
+        UI.uidoc_list_bind_text("color",p.options_category==i ? "#ceff38" : "#ffffff");
+        UI.uidoc_list_bind_float("bounce",p.options_category==i && !p.reduced_motion ? 1+0.04*pow(1-((get_time()-p.menu_audio_start)*2)%1,4) : 1);
+    }
+    UI.uidoc_end_list();
+    if p.screen==10 {
+        UI.uidoc_begin_list("weeks-list");
+        for i: 0..<5 {
+            unlocked:=week_unlocked(p,i); done:=Save.get_int(p,`encore_week_v2_complete_{i}`,0)==1;
+            UI.uidoc_list_item(int_text(i));
+            UI.uidoc_list_bind_text("title",`WEEK {i+1} / {week_names[i]}`);
+            songs:="";
+            for s: week_first[i]..week_last[i] { songs+=(s==week_first[i] ? "" : " / ")+song_names[s]; }
+            UI.uidoc_list_bind_text("songs",songs);
+            UI.uidoc_list_bind_text("status-icon",!unlocked ? "$AO/ui/kit/Icons/misc_icons_1/lock_closed.png" : (done ? "$AO/ui/kit/Icons/misc_icons_2/green_tick_outline.png" : "$AO/ui/kit/Icons/misc_icons_1/lock_open.png"));
+            UI.uidoc_list_bind_text("combo-icon",Save.get_int(p,`encore_week_v2_fc_{i}_{p.difficulty}`,0)==1 ? "$AO/new/Shop Modal/Premium_Shop/full_star.png" : "$AO/new/Shop Modal/Premium_Shop/empty_star.png");
+            UI.uidoc_list_bind_text("status",!unlocked ? "Locked" : (done ? "Completed" : "Ready to play"));
+            UI.uidoc_list_bind_text("combo",Save.get_int(p,`encore_week_v2_fc_{i}_{p.difficulty}`,0)==1 ? "Full Combo" : "Full Combo —");
+            UI.uidoc_list_bind_text("best",`Best Score {Save.get_int(p,"encore_week_v2_best_"+int_text(i)+"_"+int_text(p.difficulty),0)}`);
+            UI.uidoc_list_bind_text("color",unlocked ? "#ceff38" : "#a999b9");
+        }
+        UI.uidoc_end_list();
+    }
+}
+update_menu_music :: proc(p: Player) {
+    audible:=p.screen!=16 && p.screen!=2 && p.screen!=13 && p.screen!=14 && !p.preview_playing;
+    if !audible {
+        if p.menu_audio_id!=0 { SFX.stop(p.menu_audio_id); p.menu_audio_id=0; }
+        return;
+    }
+    if p.menu_audio_id==0 {
+        desc:=SFX.default_sfx_desc(); desc.specific_to_player=p; desc.entity_to_follow=p.entity.id;
+        desc.channel=.MUSIC; desc.volume=p.volume*0.35; desc.loop=true; desc.speed_perturb=0;
+        p.menu_audio_start=get_time(); p.menu_audio_id=SFX.play(get_asset(SFX_Asset,"music/track_1.wav"),desc);
+    }
+}

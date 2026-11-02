@@ -1,0 +1,30 @@
+* { box-sizing: border-box; } .safe { position: fixed; inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); color: white; font-family: AllIn; pointer-events: none; } .song-heading { position: absolute; top: 18px; left: 32px; width: 440px; } .song-name { font-size: 28px; font-weight: 900; height: 36px; } .meta { font-size: 15px; color: #a4c0d9; height: 22px; } .progress { width: 260px; height: 4px; margin-top: 10px; background: #25304f; } .progress img { width: 100%; height: 100%; object-fit: fill; image-tint: #70e9ed; image-fill-direction: right; } .leave { position: absolute; top: 96px; left: 32px; pointer-events: auto; background: #19233f; border: 1px solid #495579; border-radius: 8px; color: #aebfda; font-size: 15px; padding: 12px 18px; height: 48px; } .leave:hover { background: #3b3568; } .rival-score, .player-score { position: absolute; top: 160px; font-size: 13px; font-weight: 800; color: #a2b7d4; text-align: center; width: 200px; } .rival-score { left: calc(25% - 100px); } .player-score { left: calc(75% - 100px); } .rival-score div, .player-score div { font-size: 27px; color: #e6f3ff; font-weight: 900; height: 35px; } .health-footer { position: absolute; bottom: 26px; left: calc(50% - 260px); width: 520px; } .health { display: flex; align-items: center; gap: 8px; } .icon { width: 54px; height: 54px; object-fit: contain; } .track { flex: 1; height: 20px; position: relative; border: 3px solid #101327; border-radius: 8px; background: #e84691; } .fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; image-tint: currentColor; image-fill-direction: left; } .stats { display: flex; justify-content: center; gap: 22px; font-size: 16px; font-weight: 800; margin-top: 5px; color: #dce9fb; } .stats div { width: 140px; height: 22px; text-align: center; } .countdown { position: absolute; top: 42%; left: calc(50% - 150px); width: 300px; height: 110px; font-size: 100px; text-align: center; font-weight: 900; color: #76ffee; text-shadow: 5px 5px #6838a0; } .milestone { position: absolute; top: 43%; left: calc(50% - 180px); width: 360px; height: 130px; font-size: 78px; font-weight: 900; text-align: center; color: #ffe7a0; text-shadow: 4px 4px #782a83; } .milestone div { font-size: 20px; letter-spacing: 7px; } .milestone .milestone-number { font-size: 78px; height: 98px; letter-spacing: 0; } .achievement { position: absolute; bottom: 112px; left: 30px; font-size: 20px; color: #ffdf9e; height: 28px; } .cutscene { position: absolute; top: 280px; left: calc(50% - 300px); width: 600px; display: flex; gap: 18px; padding: 24px; border: 2px solid #5f70a3; border-radius: 18px; background: rgba(9,16,35,0.94); font-size: 24px; } .cutscene img { width: 72px; height: 72px; object-fit: contain; } .cutscene div { flex: 1; } @media (max-width: 1100px) { .health-footer { width: 420px; left: 32px; } .stats { font-size: 14px; gap: 12px; } .stats div { width: 115px; } .rival-score,.player-score { width: 160px; } .rival-score { left: calc(25% - 80px); } .player-score { left: calc(75% - 80px); } }.rival-tag { font-size: 13px; color: #a2b7d4; height: 20px; }
+ tutorial-panel { position: fixed; top: 145px; left: 10%; width: 80%; display: flex; flex-direction: column; align-items: center; pointer-events: none; } .tutorial-instruction { font-size: 38px; font-weight: 900; color: white; outline-width: 3px; outline-color: #050916; background: rgba(0,0,0,0.4); padding: 8px 16px; border-radius: 10px; text-align: center; } .tutorial-progress { font-size: 16px; color: white; height: 24px; }.rival-score .rival-tag, .player-score .rival-tag { font-size: 13px; height: 20px; color: #a2b7d4; }
+
+.themed-icon { image-grayscale: 1; image-tint: currentColor; }
+
+/* Leave the complete note approach corridors unobstructed. */
+.song-heading { left: calc(50% - 170px); width: 340px; text-align: center; } .song-name { font-size: 25px; white-space: nowrap; overflow: hidden; } .meta { font-size: 13px; } .progress { width: 240px; margin-left: 50px; } .leave { top: auto; bottom: 110px; } .rival-score, .player-score { top: 366px; } .achievement { bottom: 174px; }
+
+.song-heading { left: calc(50% - 180px); width: 360px; padding: 10px; background: rgba(5,12,30,0.88); border-radius: 10px; }
+@font-face { font-family: "Marker"; src: url("fonts/PermanentMarker-Regular.ttf"); font-weight: 400; }
+.safe, button, input { font-family: "Marker", AllIn; }
+button { border: 4px solid #090513; border-radius: 5px; background: #593393; color: #fff7e3; box-shadow: 5px 5px #090513, inset 0 0 12px #b655d0; text-shadow: 2px 2px #090513; font-weight: 400; }
+button:hover { background: #be278c; border-color: #0b0613; box-shadow: 6px 6px #090513, 0 0 18px #ff55c8; transform: scale(1.035); }
+button:active { background: #168e96; transform: scale(0.97); }
+.primary { background: #e92c9b; border-color: #0a0611; color: #fff5b5; }
+h1,h2 { font-weight: 400; outline-width: 5px; outline-color: #080510; text-shadow: 5px 7px #df289c; }
+.panel { background: rgba(27,11,43,0.94); border: 5px solid #090513; border-radius: 6px; box-shadow: 9px 10px #ff369e, -6px -6px #42efea; }
+.setting, .community-row { background: #331842; border-radius: 3px; border: 2px solid #090513; }
+.eyebrow, .song-best { color: #cbff3c; letter-spacing: 1px; }
+.song-meta, .style-hint, .note, .stat-label { color: #e9cdeb; }
+
+
+/* Both flow modes leave the lane approach clear. */
+.flow-toggle { position: absolute; bottom: 110px; left: 155px; height: 48px; padding: 12px 16px; font-size: 15px; pointer-events: auto; }
+.receptor-feedback { position: absolute; top: 0; left: calc(75% - 100px); width: 200px; height: 42px; text-align: center; font-size: 30px; outline-width: 3px; outline-color: #090513; }
+.rival-score, .player-score { top: 132px; width: 130px; }
+.rival-score { left: calc(50% - 140px); }
+.player-score { left: calc(50% + 10px); }
+
+.leave { width: 130px; height: 58px; } .flow-toggle { left: 185px; width: 200px; height: 58px; } .receptor-feedback { position: fixed; }

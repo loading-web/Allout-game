@@ -1,0 +1,296 @@
+begin_song :: proc(p: Player, custom: bool = false, test: bool = false, scheduled_start: float = 0, snapshot: Song_Mod = null) {
+    stop_character_voices(p);
+    if custom || test || p.mode!=0 { p.story_active=false; }
+    for c: component_iterator(Rhythm_Performer) { if c.owner_id==p.get_user_id() && c.role>2 { c.entity.destroy(); } }
+    SFX.stop(p.audio_id); SFX.stop(p.preview_id); p.preview_playing = false;
+    p.in_test = test; p.using_custom = custom;
+    p.notes.clear(); p.note_index_count=-1; p.note_cursor=0; p.voice_cursor=0; p.active_sustains.clear(); p.score = 0; p.bot_score = 0; p.combo = 0; p.best_combo = 0;
+    p.misses = 0; p.judged = 0; p.bot_judged = 0; p.bot_misses = 0; p.weight = 0; p.bot_weight = 0;
+    p.health = 50; p.bot_health = 50; p.visual_health = 0.5; p.beat = -5; p.result_saved = false; p.duel_finished = false;
+    p.preview_only=false;
+    p.rating_time = -10; p.milestone_time = -10; p.cutscene_seen = false;
+    for i: 0..<5 { p.rating_counts[i] = 0; }
+    for i: 0..<8 { p.lane_flash[i] = 0; }
+    for i: 0..<8 { p.receptor_state[i].initialized=false; }
+    for i: 0..<4 { p.lane_held[i] = false; }
+    if custom {
+        p.playing_mod = clone_mod(snapshot != null ? snapshot : p.work);
+        sanitize_mod(p.playing_mod);
+        p.difficulty=clamp(p.playing_mod.difficulty,0,2);
+        p.bpm = clamp(p.playing_mod.bpm, 60, 200); p.stage = clamp(p.playing_mod.stage,0,3);
+        p.song_length = p.playing_mod.length_beats.(float) * 60 / p.bpm;
+        for n: p.playing_mod.notes { append_runtime_note(p, n); }
+    } else {
+        p.playing_mod = null;
+        p.song = clamp(p.song,0,11); p.bpm = song_bpms[p.song]; p.stage = song_stage(p.song);
+        p.song_length = song_beats[p.song].(float) * 60 / p.bpm;
+        build_stock_chart(p);
+    }
+    ensure_note_index(p);
+    p.start_time = scheduled_start > 0 ? scheduled_start : get_time() + 4.0 * 60 / p.bpm;
+    p.song_time = get_time() - p.start_time; p.previous_song_time = p.song_time;
+    p.screen = 2; p.waiting_duel = false;
+    p.entity.set_world_position({p.stage.(float)*42+5.2,-2.6}); p.entity.mark_teleported();
+    p.record = Save.get_int(p, record_key(p), 0);
+    desc := SFX.default_sfx_desc(); desc.specific_to_player = p; desc.entity_to_follow = p.entity.id;
+    desc.volume = p.volume; desc.channel = .MUSIC; desc.delay = max(0,p.start_time-get_time());
+    source_song := custom ? p.playing_mod.audio : p.song;
+    desc.speed = p.bpm / song_bpms[clamp(source_song,0,11)];
+    desc.loop = custom && p.song_length > song_beats[clamp(source_song,0,11)].(float) * 60 / p.bpm;
+    p.audio_id = SFX.play(get_asset(SFX_Asset, music_path(source_song)),desc);
+    rebuild_stage_props(p);
+}
+build_stock_chart :: proc(p: Player) {
+    // Authored score, also used to render the music master. Difficulty is a
+    // musical reduction, not a density multiplier or random lane generator.
+    append_stock_score(p);
+}
+append_runtime_note :: proc(p: Player, spec: Chart_Note) {
+    if spec.lane < 0 || spec.lane > 3 || spec.beat < 0 || spec.beat*60/p.bpm >= p.song_length { return; }
+    side := clamp(spec.side,0,1);
+    if p.mode == 1 || p.mode == 2 || p.mode == 3 { side = 1; }
+    add_chart_note(p,spec,side);
+    if p.mode == 1 || p.mode == 2 || p.mode == 3 { add_chart_note(p,spec,0); }
+}
+add_chart_note :: proc(p: Player, spec: Chart_Note, side: int) {
+    timing := spec.beat*60/p.bpm;
+    for existing: p.notes { if existing.side == side && existing.lane == spec.lane && abs(existing.time-timing) < 0.01 { return; } }
+    n := new(Rhythm_Note); n.time = timing; n.hold = max(0,min(spec.hold*60/p.bpm,p.song_length-timing));
+    n.lane = spec.lane; n.side = side;
+    if side == 0 {
+        rng := mix_u64(p.notes.count.(u64) + p.song.(u64)*65537, p.bot_level.(u64)*19);
+        roll := rng_range_float(ref rng,0,1);
+        level := p.mode == 0 ? 3 : p.bot_level;
+        switch level {
+            case 0: n.bot_offset = roll < 0.15 ? 0.24 : (roll < 0.6 ? 0.115 : 0.16);
+            case 1: n.bot_offset = roll < 0.08 ? 0.24 : (roll < 0.4 ? 0.025 : 0.07);
+            case 2: n.bot_offset = roll < 0.025 ? 0.24 : (roll < 0.9 ? 0.022 : 0.065);
+            default: n.bot_offset = 0.008;
+        }
+        if rng_range_int(ref rng,0,1) == 0 && n.bot_offset < 0.18 { n.bot_offset = -n.bot_offset; }
+    }
+    p.notes.append(n); p.note_index_count=-1;
+}
+update_song :: proc(p: Player, dt: float) {
+    p.previous_song_time = p.song_time; p.song_time = get_time()-p.start_time;
+    b := floor(p.song_time*p.bpm/60).(int);
+    if b != p.beat {
+        p.beat = b;
+        if b < 0 && b >= -4 { rhythm_sound(p,"sfx/count.wav",0.5,1+(b+4).(float)*0.08); }
+        if b == 0 { rhythm_sound(p,"sfx/go.wav",0.5); }
+    }
+    for i: 0..<8 { p.lane_flash[i] = max(0,p.lane_flash[i]-dt); }
+    ensure_note_index(p);
+    judge_time := p.song_time + p.offset_ms.(float)*0.001;
+    for index: p.note_cursor..<p.note_timeline.count {
+        n:=p.note_timeline[index];
+        if n.time>max(p.song_time,judge_time)+0.2 { break; }
+        if n.state >= 2 { continue; }
+        if n.side == 0 && (p.mode == 2 || p.mode == 3) { continue; }
+        if n.side == 0 {
+            if n.state == 0 && p.song_time >= n.time + min(n.bot_offset,0.181) {
+                r := abs(n.bot_offset) > 0.18 ? 4 : timing_rating(abs(n.bot_offset));
+                n.rating = r; n.state = n.hold > 0 && r < 4 ? 1 : 2;
+                judge_note(p,n,r);
+            } else if n.state == 1 {
+                if p.song_time >= n.time+n.hold { n.state=2; sustain_reward(p,n); }
+                else if get_time()-p.bot_pose_time>0.2 { p.bot_direction=n.lane; p.bot_pose_time=get_time(); p.bot_missed=false; }
+            }
+        } else {
+            if n.state == 0 && judge_time > n.time+0.18 {
+                n.state = 3; n.rating = 4; judge_note(p,n,4);
+            } else if n.state == 1 {
+                // A tail cannot finish on a released key, even for a short hold.
+                if p.lane_held[n.lane] {
+                    n.hold_release=0;
+                    if judge_time >= n.time+n.hold-0.031 { n.state=2; sustain_reward(p,n); }
+                    else if get_time()-p.player_pose_time>0.2 { p.player_direction=n.lane; p.player_pose_time=get_time(); p.player_missed=false; }
+                } else {
+                    n.hold_release += dt;
+                    if n.hold_release > min(0.08,n.hold*0.4) { n.state=3; n.rating=4; judge_note(p,n,4); }
+                }
+            }
+        }
+    }
+    // Retire only completed notes (or mirrored duel notes). A live sustain
+    // keeps the cursor behind its head, so tails can never be skipped.
+    while p.note_cursor<p.note_timeline.count {
+        n:=p.note_timeline[p.note_cursor];
+        if n.state<2 && !(n.side==0 && (p.mode==2 || p.mode==3)) { break; }
+        p.note_cursor+=1;
+    }
+    trigger_song_events(p);
+    if p.mode==2 || p.mode==3 { rival:=find_player(p.opponent_id); if rival!=null { p.bot_score=rival.score; p.bot_judged=rival.judged; p.bot_weight=rival.weight; p.bot_health=rival.health; p.bot_misses=rival.misses; } }
+    if p.mode==3 {
+        rival:=find_player(p.opponent_id);
+        if p.health<=0 || (rival!=null && rival.health<=0) {
+            finish_song(p,"SET FAILED");
+            if rival!=null { finish_song(rival,"SET FAILED"); }
+            return;
+        }
+    }
+    if p.health <= 0 { finish_song(p,"GAME OVER"); return; }
+    if p.mode==1 && p.bot_health<=0 { finish_song(p,"VICTORY"); return; }
+    if p.mode==2 {
+        rival:=find_player(p.opponent_id);
+        if rival!=null && rival.screen==3 && rival.health<=0 { finish_song(p,"VICTORY"); return; }
+    }
+    if p.song_time >= p.song_length+0.22 {
+        if p.mode == 2 || p.mode == 3 {
+            p.duel_finished = true;
+            rival := find_player(p.opponent_id);
+            if rival == null { finish_song(p,"RIVAL LEFT"); return; }
+            if !rival.duel_finished && rival.screen == 2 { return; }
+            if p.mode==3 { finish_song(p,"DUET COMPLETE"); return; }
+            win := compare_results(p.score,accuracy(p),p.health,rival.score,accuracy(rival),rival.health);
+            finish_song(p,win == 0 ? "DRAW" : (win > 0 ? "VICTORY" : "RIVAL WINS"));
+        } else if p.mode == 1 {
+            win := compare_results(p.score,accuracy(p),p.health,p.bot_score,bot_accuracy(p),p.bot_health);
+            finish_song(p,win == 0 ? "DRAW" : (win > 0 ? "VICTORY" : "BOT WINS"));
+        } else { finish_song(p,"VICTORY"); }
+    }
+}
+timing_rating :: proc(delta: float) -> int {
+    if delta <= 0.045 { return 0; } if delta <= 0.09 { return 1; } if delta <= 0.135 { return 2; }
+    return 3;
+}
+press_lane :: proc(p: Player, lane: int) {
+    if p.screen != 2 || p.health <= 0 { return; }
+    t := get_time()-p.start_time + p.offset_ms.(float)*0.001;
+    target: Rhythm_Note; best := 0.181;
+    ensure_note_index(p);
+    first:=note_lower_bound(p,t-0.181);
+    for index: first..<p.note_timeline.count {
+        n:=p.note_timeline[index];
+        if n.time>t+0.181 { break; }
+        if n.side == 1 && n.lane == lane && n.state == 0 {
+            delta := abs(n.time-t);
+            if delta<=0.18 && delta < best { best = delta; target = n; }
+        }
+    }
+    p.lane_flash[4+lane] = 0.12; p.lane_rating[4+lane]=2;
+    if target != null {
+        p.lane_held[lane]=true;
+        target.rating = timing_rating(best); target.state = target.hold > 0 ? 1 : 2;
+        judge_note(p,target,target.rating);
+    } else if !p.ghost_taps && t >= 0 {
+        stray := new(Rhythm_Note); stray.lane = lane; stray.side = 1;
+        judge_note(p,stray,4);
+    }
+}
+judge_note :: proc(p: Player, n: Rhythm_Note, r: int) {
+    // Judgments never emit vocals: the chart clock owns all singing.
+    points := ([5]int){350,200,75,10,0}[r];
+    value := ([5]float){1,0.75,0.4,0.1,0}[r];
+    gain := ([5]float){2,1,0.25,0,-6}[r];
+    if n.side == 0 {
+        p.bot_score += points; p.bot_weight += value; p.bot_judged += 1;
+        p.bot_health = clamp(p.bot_health+gain,0,100);
+        if r == 4 { p.bot_misses += 1; p.bot_direction=n.lane; p.bot_pose_time=get_time(); p.bot_missed=true; }
+        else {
+            p.bot_direction = n.lane; p.bot_pose_time = get_time(); p.bot_missed = false;
+            p.lane_flash[n.lane] = r == 0 ? 0.32 : 0.2; p.lane_rating[n.lane] = r;
+
+            start_receptor_burst(p,n.lane,r);
+        }
+        return;
+    }
+    p.judged += 1; p.weight += value; p.rating_counts[r] += 1;
+    p.score += points; p.health = clamp(p.health+gain,0,100);
+    p.rating = r; p.rating_time = get_time(); p.player_direction = n.lane;
+    p.player_pose_time = get_time(); p.player_missed = r == 4;
+    p.lane_flash[4+n.lane] = r == 0 ? 0.38 : 0.22; p.lane_rating[4+n.lane] = r;
+    start_receptor_burst(p,4+n.lane,r);
+    if r == 4 {
+        p.misses += 1; p.combo = 0;
+    } else {
+        p.combo += 1; if !p.perf_active { p.total_hits += 1; } p.best_combo = max(p.best_combo,p.combo);
+        if !p.perf_active { Tutorial.report(p,"encore:hit"); }
+
+        if p.combo == 10 || p.combo == 25 || p.combo == 50 || p.combo == 100 || p.combo == 200 {
+            p.milestone = p.combo; p.milestone_time = get_time(); rhythm_sound(p,"sfx/unlock.wav",0.42);
+        }
+        if p.combo >= 10 { unlock_achievement(p,1); }
+        if p.combo >= 16 { unlock_achievement(p,2); }
+        if p.combo >= 25 { unlock_achievement(p,3); }
+        if p.combo >= 50 { unlock_achievement(p,4); }
+        if p.combo >= 100 { unlock_achievement(p,5); }
+        if p.combo >= 200 { unlock_achievement(p,6); }
+        if r == 0 && p.combo >= 25 && accuracy(p) >= 98 { unlock_achievement(p,8); }
+    }
+    if r <= 1 && (!p.using_custom || p.playing_mod.particles) { burst_for_player(p,r == 0 ? 18 : 8,rating_colors[r]); }
+}
+sustain_reward :: proc(p: Player, n: Rhythm_Note) {
+    value := ([4]float){1,0.75,0.4,0.1}[clamp(n.rating,0,3)];
+    if n.side == 1 {
+        p.score += ([4]int){100,75,25,0}[clamp(n.rating,0,3)]; p.health = min(100,p.health+(n.rating==3 ? 0.0 : 1.0)); p.judged += 1; p.weight += value;
+    } else { p.bot_score += ([4]int){100,75,25,0}[clamp(n.rating,0,3)]; p.bot_health = min(100,p.bot_health+(n.rating==3 ? 0.0 : 1.0)); p.bot_judged += 1; p.bot_weight += value; }
+}
+compare_results :: proc(a: int, aa: float, ah: float, b: int, ba: float, bh: float) -> int {
+    if a != b { return a > b ? 1 : -1; } if abs(aa-ba) > 0.01 { return aa > ba ? 1 : -1; }
+    if abs(ah-bh) > 0.01 { return ah > bh ? 1 : -1; } return 0;
+}
+record_key :: proc(p: Player) -> string {
+    if p.using_custom { return `encore_pb_mod_{p.playing_mod.id}_{p.difficulty}_{p.mode}`; }
+    return `encore_score_v2_{p.song}_{p.difficulty}_{p.mode}`;
+}
+finish_song :: proc(p: Player, message: string) {
+    if p.screen != 2 { return; }
+    stop_character_voices(p);
+    p.result = message; p.screen = 3; p.duel_finished = true;
+    SFX.stop(p.audio_id); p.audio_id = 0;
+    success := message == "VICTORY" || message == "DRAW" || message == "BOT WINS" || message == "RIVAL WINS" || message == "DUET COMPLETE";
+    rhythm_sound(p,success ? "sfx/victory.wav" : "sfx/fail.wav",0.7);
+    if p.in_test { return; }
+    p.rounds += 1; Save.set_int(p,"encore_rounds",p.rounds); Save.set_int(p,"encore_hits",p.total_hits);
+    if success {
+        unlock_achievement(p,0);
+        if p.score > p.record {
+            p.record = p.score; p.result_saved = true;
+            Save.set_int(p,record_key(p),p.score);
+            Save.set_float(p,record_key(p)+"_accuracy",accuracy(p));
+        }
+        if p.misses == 0 { unlock_achievement(p,7); }
+        if !p.using_custom { unlock_achievement(p,9+p.stage); }
+    }
+    if message == "VICTORY" || message == "DUET COMPLETE" {
+        p.wins += 1; Save.set_int(p,"encore_wins",p.wins);
+        if p.mode == 1 { unlock_achievement(p,12); }
+        if p.mode == 1 && p.bot_level == 3 { unlock_achievement(p,13); }
+        burst_for_player(p,48,{0.3,1,0.9,1});
+    }
+    story_song_finished(p);
+}
+leave_song :: proc(p: Player) {
+    stop_character_voices(p);
+    SFX.stop(p.audio_id); SFX.stop(p.preview_id); p.preview_playing = false;
+    for c: component_iterator(Rhythm_Performer) { if c.owner_id==p.get_user_id() && c.role>2 { c.entity.destroy(); } }
+    if (p.mode == 2 || p.mode==3) && p.opponent_id.count > 0 {
+        rival := find_player(p.opponent_id);
+        if rival != null && rival.screen == 2 { finish_song(rival,"RIVAL LEFT"); }
+    }
+    p.opponent_id = ""; p.waiting_duel = false;
+    p.screen = p.in_test ? 5 : (p.story_active ? 10 : 0); p.in_test = false; p.duel_finished = false;
+    p.story_active=false;
+    rebuild_stage_props(p);
+}
+update_rhythm_camera :: proc(p: Player, dt: float) {
+    center := p.stage.(float)*42.0;
+    if p.screen == 0 || p.screen == 1 || p.screen == 4 || p.screen == 6 || p.screen == 7 || p.screen == 8 || p.screen == 9 { center = song_stage(p.song).(float)*42.0; }
+    if p.screen == 5 { center = p.work.stage.(float)*42; }
+    focus := 0.0;
+    if p.screen == 2 && p.song_time >= 0 {
+        a := get_time()-p.player_pose_time; b := get_time()-p.bot_pose_time;
+        if a < 0.4 && b >= 0.4 { focus = 0.6; } if b < 0.4 && a >= 0.4 { focus = -0.6; }
+    }
+    pulse := 0.0;
+    if !p.reduced_motion && p.screen == 2 {
+        phase := (max(0,p.song_time)*p.bpm/60)%1;
+        pulse = 0.07*pow(1-phase,4);
+    }
+    if p.screen==18 && !p.reduced_motion { pulse += 0.28*sin(PI*clamp((get_time()-p.title_confirmed_at)/0.85,0,1)); }
+    p.camera.follow_player = false;
+    if abs(p.camera.position.x-center)>10 { p.camera.position={center,0}; }
+    p.camera.position = lerp(p.camera.position,{center+focus,0},clamp(dt*5,0,1));
+    p.camera.size = lerp(p.camera.size,7.0-abs(focus)*0.12-pulse-event_camera_zoom(p),clamp(dt*6,0,1));
+}

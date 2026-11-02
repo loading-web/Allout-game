@@ -1,0 +1,137 @@
+// Owner/editor-only deterministic fixture. Tests hit through real ability input.
+rhythm_qa_character_sync :: proc(p: Player) {
+    rhythm_qa_vocals(p);
+    for n: p.notes {
+        direction,amount,singing:=chart_singing_pose(p,n.side,n.time);
+        assert(direction==n.lane && amount==1 && singing,"Chart singing pose mismatch");
+        direction,amount,singing=chart_singing_pose(p,n.side,n.time+n.hold*0.5);
+        assert(direction==n.lane && amount==1 && singing,"Chart singing pose mismatch");
+        direction,amount,singing=chart_singing_pose(p,n.side,n.time+n.hold+0.001);
+        assert(!singing && amount<1,"Chart release mismatch");
+    }
+    log_info("CHARACTER SYNC PASS: all directions, exact onsets, sustained midpoint and release.");
+} @chat_command @owner_or_editor
+
+rhythm_qa_vocals :: proc(p: Player, kind: int=0, pitch: float=1) {
+    m:=new(Song_Mod); m.id="vocal_timing_qa"; m.bpm=127; m.length_beats=16;
+    m.voice_type=clamp(kind,0,6); m.rival_voice_type=m.voice_type;
+    m.pitch=clamp(pitch,0.65,1.6); m.rival_pitch=m.pitch;
+    for lane: 0..<4 {
+        m.notes.append(.{beat=2+lane.(float)*2,lane=lane,side=1,hold=0.625+lane.(float)*0.125});
+        m.notes.append(.{beat=3+lane.(float)*2,lane=lane,side=0,hold=0.375});
+    }
+    p.mode=0; p.opponent_id="";
+    begin_song(p,true,true,snapshot=m);
+    p.health=100000;
+} @chat_command @owner_or_editor
+
+rhythm_qa_menu :: proc(p: Player,screen: int=0) {
+    leave_song(p);
+    p.screen=screen==4 ? 4 : (screen==10 ? 10 : 0);
+    p.options_category=0;
+} @chat_command @owner_or_editor
+
+rhythm_qa_flow :: proc(p: Player,down: bool=false) {
+    rhythm_qa(p,0);
+    set_downscroll(p,down);
+    p.notes.clear(); p.song_length=120; p.health=100000;
+    for b: 4..<232 {
+        if b%4!=0 { continue; }
+        lane:=(b/4)%4;
+        append_runtime_note(p,.{beat=b.(float),lane=lane,side=1,hold=2});
+        append_runtime_note(p,.{beat=b.(float)+1,lane=(lane+2)%4,side=0});
+    }
+} @chat_command @owner_or_editor
+
+rhythm_qa_song :: proc(p: Player,song: int=0,difficulty: int=1) {
+    p.story_active=false; p.mode=0; p.song=clamp(song,0,11); p.difficulty=clamp(difficulty,0,2);
+    begin_song(p,false,true);
+    p.health=100000;
+    log_info(`SCORE AUDIT: {song_names[p.song]} / {difficulty_name(p.difficulty)} / {p.notes.count} notes / {p.bpm} BPM / {p.song_length} seconds`);
+} @chat_command @owner_or_editor
+
+rhythm_qa :: proc(p: Player, scenario: int=0) {
+    p.mode=0; p.opponent_id=""; p.song=0; p.difficulty=0;
+    begin_song(p,false,true);
+    SFX.stop(p.audio_id); p.notes.clear(); p.start_time=get_time()+0.5; p.bpm=120; p.song_length=8;
+    p.song_time=-0.5; p.previous_song_time=-0.5;
+    p.offset_ms=0; p.ghost_taps=true;
+    if scenario>=4 && scenario<=7 {
+        p.song_length=3;
+        append_runtime_note(p,.{beat=2,lane=scenario-4,side=1,hold=scenario==5 ? 2.0 : 0.0});
+    } else if scenario==0 {
+        append_runtime_note(p,.{beat=2,lane=0,side=1});
+        append_runtime_note(p,.{beat=4,lane=1,side=1,hold=2});
+        append_runtime_note(p,.{beat=8,lane=2,side=1});
+        append_runtime_note(p,.{beat=8,lane=3,side=1});
+        append_runtime_note(p,.{beat=10,lane=0,side=0});
+    } else if scenario==1 {
+        p.health=6;
+        append_runtime_note(p,.{beat=2,lane=0,side=1});
+    } else if scenario==2 {
+        append_runtime_note(p,.{beat=2,lane=0,side=1,hold=0.5});
+    } else if scenario==3 {
+        p.mode=1; p.bot_level=3;
+        append_runtime_note(p,.{beat=2,lane=0,side=1});
+        append_runtime_note(p,.{beat=4,lane=1,side=1});
+        p.song_length=3;
+    }
+} @chat_command @owner_or_editor
+
+rhythm_qa_hold_state :: proc(p: Player) {
+    p.editor_status="Hold incomplete";
+    for n: p.notes { if n.side==1 && n.hold>0 && n.state==2 && n.rating<4 { p.editor_status="Hold complete"; } }
+} @chat_command @owner_or_editor
+
+rhythm_qa_import :: proc(p: Player, play: bool=false) {
+    for other: component_iterator(Player) {
+        if other!=p {
+            import_mod_code(other,p.export_code);
+            if play && other.editor_status=="Imported into your library" { other.mode=0; begin_song(other,true,true); }
+        }
+    }
+} @chat_command @owner_or_editor
+// Explicit cleanup of an owner-authored QA publication; never another user's mod.
+rhythm_qa_remove_publication :: proc(p: Player, code: string) {
+    if !safe_share_code(code) { return; }
+    publication: Published_Mod;
+    payload:=decode_publication(Save.get_game_string("encore_mod_v1_"+code,""));
+    if !JSON.try_deserialize(payload,ref publication) || publication==null || publication.author_id!=p.get_user_id() { return; }
+    Save.delete_game_key("encore_mod_v1_"+code);
+    for i: 0..<p.public_mods.count #reverse { if p.public_mods[i].code==code { p.public_mods.ordered_remove_by_index(i); } }
+} @chat_command @owner_or_editor
+// Let automated dummy clients accept through the same event as a real invitee.
+rhythm_qa_accept :: proc(p: Player) {
+    for other: component_iterator(Player) {
+        if other!=p && other.challenger_id==p.get_user_id() {
+            on_encore_event(UIDoc_Event{handler="event:accept"},other);
+            for participant: component_iterator(Player) {
+                if participant==p || participant==other {
+                    SFX.stop(participant.audio_id); participant.notes.clear();
+                    participant.start_time=get_time()+0.5; participant.bpm=120; participant.song_length=3;
+                    participant.song_time=-0.5; participant.previous_song_time=-0.5;
+                    append_runtime_note(participant,.{beat=2,lane=0,side=1});
+                }
+            }
+            return;
+        }
+    }
+} @chat_command @owner_or_editor
+// Shorten only the currently selected stock song to exercise the real completion path.
+// Scores/misses are left intact; no week unlock can bypass the actual week boundary.
+rhythm_qa_finish_current :: proc(p: Player, fail: bool=false) {
+    if p.screen!=2 || p.using_custom { return; }
+    p.notes.clear();
+    p.song_length=1; p.start_time=get_time()-4;
+    if fail { p.health=0; }
+} @chat_command @owner_or_editor
+// Deterministic calibration estimator fixture; application still uses the real YES/NO UI.
+rhythm_qa_calibration :: proc(p: Player, early_ms: int=17, noisy: bool=false) {
+    start_calibration(p); stop_calibration(p);
+    for i: 0..<12 {
+        error:=noisy ? (i%2==0 ? 150.0 : -150.0) : ((i%3)-1).(float)*8;
+        p.calibration_start=get_time()-(i+4).(float)*0.5+early_ms.(float)*0.001+error*0.001;
+        calibration_tap(p);
+    }
+} @chat_command @owner_or_editor
+

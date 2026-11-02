@@ -1,0 +1,290 @@
+draw_encore :: proc(p: Player,dt: float) {
+    if !p.is_local_or_server() { return; }
+    UI.push_screen_draw_context(); defer UI.pop_draw_context();
+    UI.push_layer(10); defer UI.pop_layer();
+    if p.screen>=16 && p.screen<=18 { draw_title_sequence(p); return; }
+    if p.screen==5 { draw_creator(p); return; }
+    if p.screen==2 { draw_battle_hud(p,dt); return; }
+    doc:=get_asset(UIDoc_Asset,"UI/encore.uidoc");
+    UI.uidoc_clear_bindings();
+    bind_story_options(p);
+    bind_controls(p);
+    UI.uidoc_bind_bool("paused",p.screen==15);
+    UI.uidoc_bind_float("enter-alpha",clamp((get_time()-p.screen_changed)*7,0.2,1));
+    UI.uidoc_bind_float("enter-x",max(0,1-(get_time()-p.screen_changed)*7)*18);
+    UI.uidoc_bind_bool("overlay",p.screen!=0);
+    UI.uidoc_bind_bool("home",p.screen==0);
+    UI.uidoc_bind_bool("library",p.screen==1);
+    UI.uidoc_bind_bool("results",p.screen==3);
+    UI.uidoc_bind_bool("settings",p.screen==4);
+    UI.uidoc_bind_bool("quit",p.screen==6);
+    UI.uidoc_bind_bool("community",p.screen==7);
+    UI.uidoc_bind_bool("duel",p.screen==8);
+    UI.uidoc_bind_bool("styles",p.screen==9);
+    if p.screen==9 { bind_styles(p); }
+    UI.uidoc_bind_text("friend-mode",p.friend_mode==3 ? "Co-op duet" : "Score duel");
+    UI.uidoc_bind_text("career",`{p.rounds} shows · {p.wins} wins`);
+    UI.uidoc_bind_text("library-title",p.mode==1 ? "VS Bot" : "Freeplay");
+    UI.uidoc_bind_text("difficulty",difficulty_name(p.difficulty));
+    UI.uidoc_bind_bool("bot-mode",p.mode==1);
+    UI.uidoc_bind_text("bot-level",bot_name(p.bot_level));
+    UI.uidoc_bind_text("selected",p.using_custom ? p.work.name : song_names[p.song]);
+    UI.uidoc_bind_text("result",p.result);
+    UI.uidoc_bind_text("result-song",p.using_custom && p.playing_mod!=null ? p.playing_mod.name : song_names[p.song]);
+    UI.uidoc_bind_text("result-color",p.result=="VICTORY" ? "#7bffee" : ((p.result=="GAME OVER" || p.result=="SET FAILED") ? "#ff5e91" : "#ffc77b"));
+    UI.uidoc_bind_bool("new-record",p.result_saved);
+    UI.uidoc_bind_text("score",int_text(p.score));
+    UI.uidoc_bind_text("accuracy",`{float_text(accuracy(p),decimals=2)}%`);
+    UI.uidoc_bind_text("misses",int_text(p.misses));
+    UI.uidoc_bind_text("best-combo",int_text(p.best_combo));
+    UI.uidoc_bind_bool("competitive",p.mode==1 || p.mode==2 || p.mode==3);
+    UI.uidoc_bind_text("rival-result",`Rival · {p.bot_score} points · {float_text(bot_accuracy(p),decimals=2)}% · {p.bot_misses} misses`);
+    UI.uidoc_bind_bool("next-song",false);
+    UI.uidoc_bind_text("return-label",p.in_test ? "BACK TO EDITOR" : (p.story_active ? "WEEK SELECT" : "MENU"));
+    UI.uidoc_bind_bool("achievement",get_time()-p.unlocked_time<3);
+    UI.uidoc_bind_text("achievement-name",p.unlocked_name);
+    if p.screen==1 { bind_song_library(p); }
+    if p.screen==3 {
+        UI.uidoc_begin_list("judgements");
+        for i: 0..<5 { UI.uidoc_list_item(int_text(i)); UI.uidoc_list_bind_text("name",rating_names[i]); UI.uidoc_list_bind_text("color",rating_hex(i)); UI.uidoc_list_bind_text("count",int_text(p.rating_counts[i])); }
+        UI.uidoc_end_list();
+    }
+    if p.screen==4 { bind_settings(p); }
+    if p.screen==7 { bind_community(p); }
+    if p.screen==8 { bind_duel(p); }
+    UI.uidoc(doc,true,p,on_encore_event);
+}
+
+bind_song_library :: proc(p: Player) {
+    UI.uidoc_begin_list("songs");
+    for i: 0..<12 {
+        if !week_unlocked(p,song_week(i)) { continue; }
+        UI.uidoc_list_item(`stock.{i}`);
+        UI.uidoc_list_bind_text("name",song_names[i]);
+        UI.uidoc_list_bind_text("meta",`{song_bpms[i].(int)} BPM · {week_names[song_week(i)]}`);
+        best:=Save.get_int(p,`encore_score_v2_{i}_{p.difficulty}_{p.mode}`,0);
+        UI.uidoc_list_bind_text("best",best>0 ? `BEST {best} · {float_text(Save.get_float(p,"encore_score_v2_"+int_text(i)+"_"+int_text(p.difficulty)+"_"+int_text(p.mode)+"_accuracy",0),decimals=1)}%` : "—");
+        UI.uidoc_list_bind_text("color",!p.using_custom && p.song==i ? "#79f5ec" : "#e4eaff");
+    }
+    for m: p.custom_library.mods {
+        UI.uidoc_list_item(m.id); UI.uidoc_list_bind_text("name",m.name);
+        UI.uidoc_list_bind_text("meta",`{m.artist} · {m.bpm.(int)} BPM · Custom`);
+        UI.uidoc_list_bind_text("best",""); UI.uidoc_list_bind_text("color",p.using_custom && p.work.id==m.id ? "#79f5ec" : "#dfb5ff");
+    }
+    UI.uidoc_end_list();
+}
+
+bind_settings :: proc(p: Player) {
+    UI.uidoc_begin_list("settings-list");
+    if p.options_category==1 && p.device_kind!=.PC {
+        setting_row("touch-size","Touch Button Size","",`{round(p.touch_size*100).(int)}%`);
+        setting_row("touch-position","Touch Button Position","",([3]string){"Right","Center","Raised"}[p.touch_position]);
+        setting_row("touch-alpha","Touch Transparency","",`{round((1-p.touch_alpha)*100).(int)}%`);
+        setting_row("touch-sensitivity","Touch Sensitivity","Touch response / low to high",`{round(p.touch_sensitivity*100).(int)}%`);
+    }
+    if p.options_category==2 {
+        setting_row("volume","Volume","Music and hit feedback",`{(p.volume*100).(int)}%`);
+        setting_row("offset","Timing offset","Positive = early taps / negative = late taps",`{p.offset_ms} ms`);
+    }
+    if p.options_category==0 {
+        setting_row("speed","Note speed","Visual only",`{float_text(p.scroll_speed,decimals=1)}×`);
+        setting_row("ghost","Ghost taps","Ignore empty-lane presses",p.ghost_taps ? "On" : "Off");
+        setting_row("scroll","Downscroll","Bottom receptors when ON / top when OFF",p.downscroll ? "ON" : "OFF");
+    }
+    if p.options_category==3 || p.options_category==4 {
+        setting_row("motion","Reduced motion","Calmer camera and menu animation",p.reduced_motion ? "On" : "Off");
+    }
+    if p.options_category==4 {
+        setting_row("speed","Note speed","Visual only",`{float_text(p.scroll_speed,decimals=1)}×`);
+        setting_row("ghost","Ghost taps","Ignore empty-lane presses",p.ghost_taps ? "On" : "Off");
+    }
+    UI.uidoc_end_list();
+}
+setting_row :: proc(id: string,name: string,desc: string,value: string) {
+    UI.uidoc_list_item(id); UI.uidoc_list_bind_text("name",name); UI.uidoc_list_bind_text("desc",desc); UI.uidoc_list_bind_text("value",value);
+}
+rating_hex :: proc(i: int) -> string { return ([5]string){"#75fff0","#8afa98","#ffd674","#ff9942","#ff517c"}[clamp(i,0,4)]; }
+
+bind_community :: proc(p: Player) {
+    UI.uidoc_bind_bool("community-empty",p.public_mods.count==0);
+    UI.uidoc_begin_list("community-mods");
+    for m: p.public_mods {
+        UI.uidoc_list_item(m.code); UI.uidoc_list_bind_text("name",m.mod.name);
+        UI.uidoc_list_bind_text("meta",`{m.author} · {m.mod.bpm.(int)} BPM · {m.mod.notes.count} notes`);
+        UI.uidoc_list_bind_text("favorite",Save.get_int(p,"encore_fav_"+m.code,0)==1 ? "Saved" : "Favorite");
+        votes:=Save.get_game_int("encore_votes_"+m.code,0); sum:=Save.get_game_int("encore_stars_"+m.code,0);
+        UI.uidoc_list_bind_text("rating",votes>0 ? float_text(sum.(float)/votes.(float),decimals=1) : "—");
+    }
+    UI.uidoc_end_list();
+}
+bind_duel :: proc(p: Player) {
+    UI.uidoc_begin_list("friends"); count:=0;
+    for other: component_iterator(Player) {
+        if other==p || other.screen==2 || other.screen==5 { continue; }
+        count+=1; UI.uidoc_list_item(other.get_user_id()); UI.uidoc_list_bind_text("name",other.get_username());
+        UI.uidoc_list_bind_text("state",other.waiting_duel ? "Challenge pending" : "Ready · send a challenge");
+    }
+    UI.uidoc_end_list();
+    UI.uidoc_bind_bool("no-friends",count==0);
+    UI.uidoc_bind_bool("waiting",p.waiting_duel);
+    challenger:=find_player(p.challenger_id);
+    UI.uidoc_bind_bool("invitation",challenger!=null);
+    UI.uidoc_bind_text("invite-text",challenger!=null ? challenger.get_username()+" invited you to "+song_names[p.requested_song] : "");
+}
+
+on_encore_event :: proc(e: UIDoc_Event,userdata: Object) {
+    p:=userdata.(Player); if p==null { return; }
+    if e.handler!="event:cal-tap" { rhythm_sound(p,"sfx/click.wav",0.3); }
+    if p.screen==5 { creator_event(p,e); return; }
+    h:=e.handler;
+    if h=="event:control-cancel" { p.capture_control=-1; return; }
+    if h=="event:control-bind" && p.device_kind==.PC { p.capture_control=clamp(read_index(e.key),0,6); return; }
+    if h=="event:control-preset" && p.device_kind==.PC { apply_control_preset(p,clamp(read_index(e.key),0,3)); return; }
+    p.capture_control=-1;
+    if h=="event:pause" { pause_encore(p); return; }
+    if h=="event:play" { p.story_active=false; p.screen=10; p.mode=0; p.using_custom=false; }
+    if h=="event:week" && p.screen==10 { start_week(p,read_index(e.key)); }
+    if h=="event:weeks" { return_to_weeks(p); }
+    if h=="event:ending-skip" && p.screen==11 { p.screen=12; }
+    if h=="event:category" { p.options_category=clamp(read_index(e.key),0,5); }
+    if h=="event:calibrate" { start_calibration(p); }
+    if h=="event:cal-tap" { calibration_tap(p); }
+    if h=="event:cal-no" { stop_calibration(p); p.screen=4; p.options_category=2; }
+    if h=="event:cal-yes" && p.calibration_done && p.calibration_message=="Apply this timing offset?" {
+        p.offset_ms=p.calibration_recommendation; Save.set_int(p,"encore_offset",p.offset_ms); p.screen=4; p.options_category=2;
+    }
+    if h=="event:freeplay" { p.story_active=false; p.mode=0; p.screen=1; p.using_custom=false; if !week_unlocked(p,song_week(p.song)) { p.song=0; } }
+    if h=="event:bot" { p.story_active=false; p.mode=1; p.screen=1; p.using_custom=false; if !week_unlocked(p,song_week(p.song)) { p.song=0; } }
+    if h=="event:create" { p.screen=5; p.opponent_id=""; save_work(p); rebuild_stage_props(p); }
+    if h=="event:styles" { p.screen=9; }
+    if h=="event:style" {
+        i:=read_index(e.key);
+        if i>=0 && i<18 && (p.achievements & (1<<i))!=0 { p.equipped_style=i; Save.set_int(p,"encore_style",i); }
+    }
+    if h=="event:friend-mode" { p.friend_mode=p.friend_mode==2 ? 3 : 2; }
+    if h=="event:settings" { p.screen=4; p.options_category=1; }
+    if h=="event:exit" { p.screen=6; }
+    if h=="event:duel" { p.screen=8; p.using_custom=false; }
+    if h=="event:back" { if p.screen==3 || p.screen==5 { leave_song(p); } else { p.screen=0; p.waiting_duel=false; } }
+    if h=="event:back-library" { p.screen=1; }
+    if h=="event:difficulty" { p.difficulty=(p.difficulty+1)%3; }
+    if h=="event:bot-level" { p.bot_level=(p.bot_level+1)%4; }
+    if h=="event:duel-song" { p.song=(p.song+1)%12; }
+    if h=="event:song" {
+        for i: 0..<12 { if e.key==`stock.{i}` && week_unlocked(p,song_week(i)) { p.song=i; p.using_custom=false; } }
+        for m: p.custom_library.mods { if m.id==e.key { p.work=clone_mod(m); p.using_custom=true; p.difficulty=m.difficulty; } }
+    }
+    if h=="event:start" && (p.using_custom || week_unlocked(p,song_week(p.song))) { p.story_active=false; p.opponent_id=""; begin_song(p,p.using_custom); }
+    if h=="event:retry" {
+        if p.story_active { start_week(p,p.story_week); } else if p.mode==2 || p.mode==3 { p.screen=8; p.opponent_id=""; } else { begin_song(p,p.using_custom,p.in_test,snapshot=p.playing_mod); }
+    }
+    // Cross-week progression is only possible through explicit Week Select.
+    if h=="event:leave" { leave_song(p); }
+    if h=="event:toggle-downscroll" { set_downscroll(p,!p.downscroll); }
+    if h=="event:community" { p.screen=7; refresh_public_mods(p); }
+    if h=="event:refresh" { refresh_public_mods(p); }
+    if h=="event:community-play" {
+        for m: p.public_mods { if m.code==e.key { p.work=clone_mod(m.mod); p.mode=0; p.opponent_id=""; begin_song(p,true); break; } }
+    }
+    if h=="event:download" {
+        import_mod_code(p,e.key);
+    }
+    if h=="event:favorite" { key:="encore_fav_"+e.key; Save.set_int(p,key,Save.get_int(p,key,0)==1 ? 0 : 1); }
+    if h=="event:rate" {
+        key:="encore_rated_"+e.key; old:=Save.get_int(p,key,0); stars:=old%5+1;
+        if old==0 { Save.increment_game_int("encore_votes_"+e.key,1); }
+        Save.increment_game_int("encore_stars_"+e.key,stars-old); Save.set_int(p,key,stars);
+    }
+    if h=="event:setting-minus" || h=="event:setting-plus" {
+        d:=h=="event:setting-minus" ? -1.0 : 1.0;
+        switch e.key {
+            case "touch-size": { p.touch_size=clamp(p.touch_size+d*0.1,0.7,1.3); Save.set_float(p,"encore_touch_size",p.touch_size); }
+            case "touch-position": { p.touch_position=(p.touch_position+d.(int)+3)%3; Save.set_int(p,"encore_touch_position",p.touch_position); }
+            case "touch-alpha": { p.touch_alpha=clamp(p.touch_alpha-d*0.15,0.25,1); Save.set_float(p,"encore_touch_alpha",p.touch_alpha); }
+            case "touch-sensitivity": { p.touch_sensitivity=clamp(p.touch_sensitivity+d*0.1,0.5,1.5); Save.set_float(p,"encore_touch_sensitivity",p.touch_sensitivity); }
+            case "volume": { p.volume=clamp(p.volume+d*0.05,0,1); Save.set_float(p,"encore_volume",p.volume); SFX.stop(p.menu_audio_id); p.menu_audio_id=0; }
+            case "offset": { p.offset_ms=clamp(p.offset_ms+d.(int)*5,-200,200); Save.set_int(p,"encore_offset",p.offset_ms); }
+            case "speed": { p.scroll_speed=clamp(p.scroll_speed+d*0.1,0.6,1.8); Save.set_float(p,"encore_speed",p.scroll_speed); }
+            case "motion": { p.reduced_motion=!p.reduced_motion; Save.set_int(p,"encore_motion",p.reduced_motion ? 1 : 0); }
+            case "ghost": { p.ghost_taps=!p.ghost_taps; Save.set_int(p,"encore_ghost",p.ghost_taps ? 1 : 0); }
+            case "scroll": { set_downscroll(p,!p.downscroll); }
+        }
+    }
+    if h=="event:challenge" {
+        other:=find_player(e.key);
+        if other!=null && other!=p && other.screen!=2 && other.screen!=5 && !other.waiting_duel {
+            other.challenger_id=p.get_user_id(); other.requested_song=p.song; other.requested_difficulty=p.difficulty; other.requested_mode=p.friend_mode; other.screen=8;
+            p.waiting_duel=true; p.invited_id=other.get_user_id(); rhythm_sound(other,"sfx/unlock.wav",0.5);
+        }
+    }
+    if h=="event:decline" { other:=find_player(p.challenger_id); if other!=null { other.waiting_duel=false; } p.challenger_id=""; }
+    if h=="event:accept" {
+        other:=find_player(p.challenger_id);
+        if other!=null && other.waiting_duel && other.screen==8 {
+            p.song=p.requested_song; p.difficulty=p.requested_difficulty; other.song=p.song; other.difficulty=p.difficulty;
+            p.mode=p.requested_mode; other.mode=p.mode; p.opponent_id=other.get_user_id(); other.opponent_id=p.get_user_id();
+            start:=get_time()+4.0*60/song_bpms[p.song]; begin_song(p,false,false,start); begin_song(other,false,false,start);
+            p.challenger_id=""; other.challenger_id="";
+        }
+    }
+}
+
+draw_battle_hud :: proc(p: Player,dt: float) {
+    if !p.is_local_or_server() { return; }
+    UI.uidoc_clear_bindings();
+    UI.uidoc_bind_text("flow-label",p.downscroll ? "Downscroll ON" : "Downscroll OFF");
+    feedback_age:=get_time()-p.rating_time;
+    UI.uidoc_bind_bool("receptor-feedback",feedback_age>=0 && feedback_age<0.75);
+    UI.uidoc_bind_text("receptor-rating",p.using_custom ? p.playing_mod.judgement_names[p.rating] : rating_names[p.rating]);
+    UI.uidoc_bind_text("receptor-rating-color",rating_hex(p.rating));
+    UI.uidoc_bind_float("receptor-rating-alpha",clamp(1-feedback_age/0.75,0,1));
+    // UIDoc uses downward-growing document coordinates, unlike UI screen rects.
+    // Convert the shared receptor position, toward the center, to document pixels.
+    safe:=UI.get_safe_screen_rect();
+    inward:=p.downscroll ? 85.0 : -65.0;
+    feedback_y:=(safe.max.y-rhythm_receptor_y(p,safe)-inward*safe.height()/1028.0)/UI.get_current_scale_factor();
+    UI.uidoc_bind_float("feedback-y",feedback_y);
+    UI.uidoc_bind_float("milestone-y",p.downscroll ? 150.0 : -100.0);
+    UI.uidoc_bind_text("song-name",p.using_custom ? p.playing_mod.name : song_names[p.song]);
+    UI.uidoc_bind_text("difficulty",difficulty_name(p.difficulty)); UI.uidoc_bind_text("bpm",int_text(p.bpm.(int)));
+    UI.uidoc_bind_text("stage",stage_names[p.stage]);
+    theme:=p.using_custom ? p.playing_mod.theme : 0;
+    UI.uidoc_bind_text("hud-accent",([3]string){"#54e1df","#ffce77","#d8ecff"}[theme]);
+    UI.uidoc_bind_text("leave-label",p.in_test ? "Editor" : "Menu");
+    UI.uidoc_bind_float("progress",clamp(p.song_time/max(0.01,p.song_length),0,1));
+    p.visual_health=lerp(p.visual_health,p.health/100,clamp(dt*12,0,1));
+    UI.uidoc_bind_float("health",p.visual_health);
+    UI.uidoc_bind_float("health-y",p.using_custom ? p.playing_mod.health_y : 0);
+    rival:=(p.mode==2 || p.mode==3) ? find_player(p.opponent_id) : null;
+    UI.uidoc_bind_text("player-icon-color",p.using_custom ? palette_hex(p.playing_mod.player_color) : (p.equipped_style>=0 ? palette_hex(style_color(p.equipped_style)) : "#22d9f3"));
+    UI.uidoc_bind_text("rival-icon-color",p.using_custom ? palette_hex(p.playing_mod.rival_color) : "#f1418f");
+    UI.uidoc_bind_text("rival-label",rival!=null ? limited_text(rival.get_username(),16) : (p.mode==1 ? bot_name(p.bot_level)+" BOT" : "OPPONENT"));
+    UI.uidoc_bind_text("player-label",p.using_custom ? p.playing_mod.character_name : "YOU");
+    UI.uidoc_bind_text("bot-score",int_text(p.bot_score)); UI.uidoc_bind_text("score",int_text(p.score));
+    UI.uidoc_bind_text("accuracy",`{float_text(accuracy(p),decimals=1)}%`);
+    UI.uidoc_bind_text("combo",int_text(p.combo)); UI.uidoc_bind_text("misses",int_text(p.misses));
+    UI.uidoc_bind_bool("countdown",p.song_time<0 && (!p.using_custom || p.playing_mod.dialogue.count==0));
+    UI.uidoc_bind_text("count",int_text(clamp(ceil(-p.song_time*p.bpm/60).(int),1,4)));
+    age:=get_time()-p.milestone_time;
+    UI.uidoc_bind_bool("milestone",age<1.1 && !p.reduced_motion);
+    UI.uidoc_bind_text("milestone-number",int_text(p.milestone));
+    UI.uidoc_bind_float("milestone-alpha",clamp(1-age/1.1,0,1));
+    // UIDoc transforms interpolate automatically between submissions.
+    UI.uidoc_bind_float("milestone-scale",1+max(0,0.15-age*0.5));
+    dialogue:="";
+    if p.using_custom {
+        if p.song_time<0 { dialogue=p.playing_mod.dialogue; }
+        for ev: p.playing_mod.events {
+            if ev.kind==8 && p.song_time>=ev.beat*60/p.bpm && p.song_time<ev.beat*60/p.bpm+ev.duration { dialogue=ev.text; }
+        }
+    }
+    UI.uidoc_bind_bool("dialogue",dialogue.count>0); UI.uidoc_bind_text("dialogue-text",dialogue);
+    UI.uidoc_bind_bool("achievement",get_time()-p.unlocked_time<3); UI.uidoc_bind_text("achievement-name",p.unlocked_name);
+    UI.uidoc(get_asset(UIDoc_Asset,"UI/battle.uidoc"),false,p,on_encore_event);
+}
+
+set_downscroll :: proc(p: Player,enabled: bool) {
+    p.downscroll=enabled;
+    Save.set_int(p,"encore_down",enabled ? 1 : 0);
+}
+

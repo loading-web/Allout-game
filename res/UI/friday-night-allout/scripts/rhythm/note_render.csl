@@ -1,0 +1,129 @@
+draw_battle_notes :: proc(p: Player) {
+    if !p.is_local_or_server() { return; }
+    UI.push_screen_draw_context(); defer UI.pop_draw_context();
+    UI.push_layer(12); defer UI.pop_layer();
+    safe:=UI.get_safe_screen_rect(); scale:=safe.height()/1028.0;
+    w:=safe.width(); h:=safe.height();
+    spacing:=min(76*scale,w*0.085); size:=spacing*0.42;
+    // Screen coordinates grow upward. Positive lead distance is always on
+    // the approach side of BOTH banks; changing flow never changes X/side.
+    receptor_y:=rhythm_receptor_y(p,safe);
+    approach:=p.downscroll ? 1.0 : -1.0;
+    field_min:=safe.min.y+min(130*scale,h*0.13);
+    field_max:=safe.max.y-min(130*scale,h*0.13);
+    speed:=155*scale*p.scroll_speed;
+    offset:=p.using_custom ? p.playing_mod.hud_x*scale : 0.0;
+    t:=p.song_time+p.offset_ms.(float)*0.001;
+    rival:=(p.mode==2 || p.mode==3) ? find_player(p.opponent_id) : null;
+    for side: 0..<2 {
+        x:=safe.min.x+w*(side==0 ? 0.25 : 0.75)+offset;
+        for lane: 0..<4 {
+            center:=v2{x+(lane.(float)-1.5)*spacing,receptor_y};
+            col:=arrow_colors[lane]; index:=side*4+lane; flash:=p.lane_flash[index];
+            if side==0 && rival!=null { flash=rival.lane_flash[4+lane]; }
+            if flash>0 {
+                r:=p.lane_rating[index]; if side==0 && rival!=null { r=rival.lane_rating[4+lane]; }
+                color:=rating_colors[r];
+                if side==0 && r==4 { flash=0; }
+                if r==0 { color=arrow_colors[(lane+floor(get_time()*16).(int))%4]; }
+                intensity:=p.using_custom ? p.playing_mod.glow : 1.0;
+                color.w=min(0.65,flash*2)*intensity;
+                radius:=size*(1.4+(0.38-flash)*2);
+                prev_radius:=size*(1.4+(0.38-min(0.38,flash+get_fixed_delta_time()))*2);
+                UI.quad_interpolated(Rect{center,center}.grow_unscaled(radius),Rect{center,center}.grow_unscaled(prev_radius),get_asset(Texture_Asset,"light_circle_a5135e.png"),color);
+                if side==1 && r==4 {
+                    lane_rect:=Rect{{center.x-size,p.downscroll ? receptor_y-size : field_min},{center.x+size,p.downscroll ? field_max : receptor_y+size}};
+                    UI.quad(lane_rect,core_globals.white_sprite,{1,0.12,0.25,flash*0.25});
+                }
+            }
+            col.w=flash>0 ? 1.0 : 0.3;
+            UI.quad(Rect{center,center}.grow_unscaled(size),get_asset(Texture_Asset,arrow_paths[lane]),col);
+            if p.receptor_state[index].initialized && (!p.using_custom || p.playing_mod.particles) {
+                p.receptor_fx[index].draw(p.receptor_state[index],center,get_time());
+            }
+            if side==0 && rival!=null && rival.receptor_state[4+lane].initialized {
+                rival.receptor_fx[4+lane].draw(rival.receptor_state[4+lane],center,get_time());
+            }
+        }
+    }
+    ensure_note_index(p);
+    if rival!=null { ensure_note_index(rival); }
+    // Clip before any opponent lookup or draw call. Include the longest tail,
+    // both interpolation endpoints and either scroll direction.
+    lead:=max(abs(field_min-receptor_y),abs(field_max-receptor_y))/max(1,speed)+size/max(1,speed)+0.1;
+    first:=note_lower_bound(p,min(t,p.previous_song_time+p.offset_ms.(float)*0.001)-p.note_max_hold-0.2);
+    latest:=max(t,p.previous_song_time+p.offset_ms.(float)*0.001)+lead;
+    for index: first..<p.note_timeline.count {
+        n:=p.note_timeline[index];
+        if n.time>latest { break; }
+        state:=n.state;
+        if n.side==0 && rival!=null {
+            match:=note_lower_bound(rival,n.time-0.01);
+            for j: match..<rival.note_timeline.count {
+                rn:=rival.note_timeline[j];
+                if rn.time>n.time+0.01 { break; }
+                if rn.side==1 && rn.lane==n.lane && abs(rn.time-n.time)<0.01 { state=rn.state; break; }
+            }
+        }
+        if state>=2 { continue; }
+        delta:=n.time-t;
+        if delta+n.hold < -0.2 { continue; }
+        x:=safe.min.x+w*(n.side==0 ? 0.25 : 0.75)+(n.lane.(float)-1.5)*spacing+offset;
+        y:=receptor_y+approach*delta*speed;
+        if state==1 { y=receptor_y; }
+        pos:=v2{x,y};
+        color:=arrow_colors[n.lane];
+        skin:=p.using_custom ? p.playing_mod.note_skin : 0;
+        if skin==1 { color.w=0.9; }
+        if skin==2 { color=lerp(color,v4{1,1,1,1},0.35); }
+        if n.hold>0 {
+            tail:=receptor_y+approach*(n.time+n.hold-t)*speed;
+            tail=clamp(tail,field_min,field_max);
+            head:=clamp(y,field_min,field_max);
+            low:=min(head,tail); high:=max(head,tail);
+            if high>low && high>=safe.min.y && low<=safe.max.y {
+                prev_tail:=receptor_y+approach*(n.time+n.hold-p.previous_song_time-p.offset_ms.(float)*0.001)*speed;
+                prev_tail=clamp(prev_tail,field_min,field_max);
+                prev_head:=state==1 ? receptor_y : receptor_y+approach*(n.time-p.previous_song_time-p.offset_ms.(float)*0.001)*speed;
+                prev_head=clamp(prev_head,field_min,field_max);
+                UI.quad_interpolated(Rect{{x-6*scale,low},{x+6*scale,high}},Rect{{x-6*scale,min(prev_head,prev_tail)},{x+6*scale,max(prev_head,prev_tail)}},core_globals.white_sprite,{color.x,color.y,color.z,0.55});
+            }
+        }
+        if y>field_max+size || y<field_min-size { continue; }
+        // Evaluate both frames in the CURRENT layout: toggling scroll snaps
+        // every head and tail together, without interpolating across the screen.
+        previous_y:=state==1 ? receptor_y : receptor_y+approach*(n.time-p.previous_song_time-p.offset_ms.(float)*0.001)*speed;
+        UI.push_interpolation_offset(v2{0,y-previous_y}); defer UI.pop_interpolation_offset();
+        if !p.using_custom || p.playing_mod.trails {
+            UI.quad(Rect{pos+v2{0,approach*16*scale},pos+v2{0,approach*16*scale}}.grow_unscaled(size),get_asset(Texture_Asset,arrow_paths[n.lane]),{color.x,color.y,color.z,0.16});
+        }
+        UI.quad(Rect{pos,pos}.grow_unscaled(size),get_asset(Texture_Asset,arrow_paths[n.lane]),color);
+        if skin==1 { UI.quad(Rect{pos,pos}.grow_unscaled(size*0.2),core_globals.white_sprite,{1,1,1,0.75}); }
+    }
+    draw_song_overlays(p);
+}
+
+rhythm_receptor_y :: proc(p: Player,safe: Rect) -> float {
+    // Reserve room for the native touch controls below the bottom bank.
+    inset:=p.device_kind==.PC ? 200.0 : 260.0;
+    margin:=min(inset*safe.height()/1028.0,safe.height()*0.27);
+    return p.downscroll ? safe.min.y+margin : safe.max.y-margin;
+}
+draw_performer_feedback :: proc(p: Player) {
+    if !p.is_local_or_server() { return; }
+    age:=get_time()-p.rating_time; if age>0.75 { return; }
+    for c: component_iterator(Rhythm_Performer) {
+        if c.owner_id!=p.get_user_id() || c.role!=1 { continue; }
+        UI.begin_world_space_ui(c.entity); defer UI.end_world_space_ui();
+        UI.push_layer(15); defer UI.pop_layer();
+        rise:=min(age,0.5)*0.75; previous_rise:=min(max(0,age-get_fixed_delta_time()),0.5)*0.75;
+        UI.push_interpolation_offset(c.entity.calculate_interpolation_offset()+v2{0,rise-previous_rise}); defer UI.pop_interpolation_offset();
+        center:=c.entity.world_position+v2{0,2.7+rise};
+        ts:=UI.default_text_settings(); ts.font=get_asset(Font_Asset,"fonts/PermanentMarker-Regular.ttf"); ts.size=p.rating==0 ? 0.55 : 0.43;
+        color:=rating_colors[p.rating]; color.w=clamp(1-age/0.75,0,1); ts.color=color; ts.outline_color={0.03,0.02,0.09,color.w};
+        text:=p.using_custom ? p.playing_mod.judgement_names[p.rating] : rating_names[p.rating];
+        UI.text(Rect{center,center}.grow(0.3,1.6,0.3,1.6),ts,text);
+        ts.size=0.32; UI.text(Rect{center-v2{0,0.55},center-v2{0,0.55}}.grow(0.2,1,0.2,1),ts,int_text(p.combo));
+    }
+}
+

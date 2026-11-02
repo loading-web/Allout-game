@@ -1,0 +1,29 @@
+// Finite PCM segments, scheduled in source-sample space. Pitch is constant
+// across the complete note; rounding error is less than one output sample.
+play_segmented_voice :: proc(source: Player, listener: Player, n: Rhythm_Note, kind: int, tone: int, pitch: float, volume: float, delay: float) -> u64 {
+    folder:=`sfx/voice_segments/{kind}_{tone}_{n.lane}`;
+    d:=SFX.default_sfx_desc();
+    d.specific_to_player=listener; d.entity_to_follow=source.entity.id;
+    d.volume=volume; d.speed=pitch; d.speed_perturb=0; d.volume_perturb=0;
+    d.delay=delay;
+    // Pitch changes must not shorten taps or lengthen their chart window.
+    duration:=n.hold>0 ? n.hold : 0.09;
+    frames:=max(1,round(duration*pitch*32000).(int));
+    attack_bit:=0;
+    while attack_bit<11 && (1<<(attack_bit+1))<=frames { attack_bit+=1; }
+    consumed:=1<<attack_bit;
+    first:=SFX.play(get_asset(SFX_Asset,`{folder}/attack_{attack_bit}.wav`),d);
+    remaining:=frames-consumed;
+    // Longest pieces first: the tiny final pieces form a clean bounded release.
+    for step: 0..<18 {
+        bit:=17-step;
+        size:=1<<bit;
+        while remaining>=size {
+            d.delay=delay+consumed.(float)/(32000*pitch);
+            id:=SFX.play(get_asset(SFX_Asset,`{folder}/sustain_{bit}.wav`),d);
+            n.voice_segments.append(id);
+            consumed+=size; remaining-=size;
+        }
+    }
+    return first;
+}

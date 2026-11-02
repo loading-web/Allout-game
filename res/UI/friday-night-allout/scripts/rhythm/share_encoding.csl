@@ -1,0 +1,38 @@
+// The game-string transport rejects embedded JSON quotes/backslashes.
+// Store a reversible text envelope; keep local saves in the native JSON format.
+REMOVED_PUBLICATION :: "ENCORE_REMOVED_V1";
+replace_share_text :: proc(value: string, from: string, to: string) -> string {
+    parts:=string_split(value,from);
+    result: string;
+    for part,i: parts { if i>0 { result+=to; } result+=part; }
+    return result;
+}
+encode_publication :: proc(payload: string) -> string {
+    value:=replace_share_text(payload,"~","~t");
+    value=replace_share_text(value,"\\","~b");
+    value=replace_share_text(value,"\"","~q");
+    value=replace_share_text(value,"\n","~n");
+    value=replace_share_text(value,"\r","~r");
+    value=replace_share_text(value,"\t","~s");
+    return "ENCORE1:"+value;
+}
+decode_publication :: proc(value: string) -> string {
+    if value.count<8 || string_substring(value,0,8)!="ENCORE1:" { return value; }
+    if value.count>300000 { return ""; }
+    parts:=string_split(string_substring(value,8,value.count-8),"~");
+    if parts.count==0 { return ""; }
+    result:=parts[0];
+    for i: 1..<parts.count {
+        part:=parts[i]; if part.count==0 { return ""; }
+        token:=string_substring(part,0,1);
+        if token=="t" { result+="~"; }
+        else if token=="b" { result+="\\"; }
+        else if token=="q" { result+="\""; }
+        else if token=="n" { result+="\n"; }
+        else if token=="r" { result+="\r"; }
+        else if token=="s" { result+="\t"; }
+        else { return ""; }
+        result+=string_substring(part,1,part.count-1);
+    }
+    return result;
+}

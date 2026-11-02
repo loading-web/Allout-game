@@ -1,0 +1,34 @@
+// Runtime order is separate from p.notes: authored data and stock MIDI assignment
+// retain their original order. Rebuild only on chart replacement/appends.
+ensure_note_index :: proc(p: Player) {
+    if p.note_index_count==p.notes.count { return; }
+    p.note_timeline.clear(); p.note_timeline.reserve(p.notes.count);
+    p.note_max_hold=0; p.note_cursor=0;
+    for n: p.notes { p.note_timeline.append(n); p.note_max_hold=max(p.note_max_hold,n.hold); }
+    // Bottom-up stable merge sort: O(N log N), handles unsorted imported charts.
+    scratch:=new(Rhythm_Note,p.notes.count);
+    width:=1;
+    while width<p.note_timeline.count {
+        left:=0;
+        while left<p.note_timeline.count {
+            middle:=min(left+width,p.note_timeline.count); right:=min(left+width*2,p.note_timeline.count);
+            a:=left; b:=middle;
+            for out: left..<right {
+                if a<middle && (b>=right || p.note_timeline[a].time<=p.note_timeline[b].time) { scratch[out]=p.note_timeline[a]; a+=1; }
+                else { scratch[out]=p.note_timeline[b]; b+=1; }
+            }
+            left+=width*2;
+        }
+        for i: 0..<p.note_timeline.count { p.note_timeline[i]=scratch[i]; }
+        width*=2;
+    }
+    p.note_index_count=p.notes.count;
+}
+note_lower_bound :: proc(p: Player,time: float) -> int {
+    low:=0; high:=p.note_timeline.count;
+    while low<high {
+        middle:=(low+high)/2;
+        if p.note_timeline[middle].time<time { low=middle+1; } else { high=middle; }
+    }
+    return low;
+}

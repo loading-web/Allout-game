@@ -1,0 +1,360 @@
+mark_work_dirty :: proc(p: Player) { p.dirty=true; p.save_due=get_time()+0.5; p.editor_status="Saving…"; }
+ensure_mod_id :: proc(p: Player) {
+    prefix:=p.get_user_id()+"_";
+    if p.work.id.count>=prefix.count && string_substring(p.work.id,0,prefix.count)==prefix { return; }
+    // A community song can be played without downloading it. Editing/publishing
+    // that song must fork its identity rather than overwriting its author's key.
+    p.work.id = `{p.get_user_id()}_{p.next_mod_id}`;
+    p.next_mod_id += 1; Save.set_int(p,"encore_nextmod",p.next_mod_id);
+}
+save_work :: proc(p: Player, force: bool=false) {
+    if p.perf_active { p.dirty=false; p.editor_status="Temporary performance fixture"; return; }
+    // Do not recreate a deleted last mod by autosaving an untouched draft.
+    if !force && !p.dirty && p.work.id.count==0 { return; }
+    ensure_mod_id(p);
+    sanitize_mod(p.work);
+    p.work.bpm=clamp(p.work.bpm,60,200); p.work.length_beats=clamp(p.work.length_beats,16,512);
+    stored:=false;
+    for m,i: p.custom_library.mods { if m.id==p.work.id { p.custom_library.mods[i]=clone_mod(p.work); stored=true; break; } }
+    if !stored {
+        if p.custom_library.mods.count>=32 { p.dirty=true; p.save_due=get_time()+5; p.editor_status="Library full · delete a mod first"; return; }
+        p.custom_library.mods.append(clone_mod(p.work));
+    }
+    Save.set_json(p,"encore_library_v1",ref p.custom_library);
+    p.dirty=false; p.editor_status="Autosaved";
+}
+read_index :: proc(s: string) -> int {
+    if s.count==0 || s.count>6 { return -1; }
+    result:=0;
+    for i: 0..<s.count {
+        ch:=string_substring(s,i,1); found:=false;
+        for digit: 0..9 { if ch==int_text(digit) { result=result*10+digit; found=true; break; } }
+        if !found { return -1; }
+    }
+    return result;
+}
+selected_note :: proc(p: Player,index: int) -> bool { for i: p.selection { if i==index { return true; } } return false; }
+chart_cell :: proc(p: Player, key: string) {
+    parts:=string_split(key,":"); if parts.count!=2 { return; }
+    row:=read_index(parts[0]); lane:=read_index(parts[1]); if row<0 || row>=16 || lane<0 || lane>3 { return; }
+    beat:=p.editor_page.(float)*chart_span(p) + row.(float)*chart_step(p);
+    target: int=-1;
+    for n,i: p.work.notes { if n.side==p.editor_side && n.lane==lane && abs(n.beat-beat)<0.01 { target=i; break; } }
+    if p.editor_tool==1 {
+        if target>=0 {
+            if selected_note(p,target) { p.selection.ordered_remove_by_value(target,.ALL); } else { p.selection.append(target); }
+        }
+        return;
+    }
+    if p.editor_tool==2 {
+        if target>=0 { remember_chart(p); p.work.notes.ordered_remove_by_index(target); p.selection.clear(); mark_work_dirty(p); }
+        return;
+    }
+    if p.editor_tool==3 && p.selection.count==0 { p.editor_status="Select notes before moving"; return; }
+    if p.editor_tool==3 && p.selection.count>0 {
+        first:=p.selection[0]; if first<0 || first>=p.work.notes.count { p.selection.clear(); return; }
+        remember_chart(p);
+        shift:=beat-p.work.notes[first].beat; delta:=lane-p.work.notes[first].lane;
+        for i: p.selection {
+            if i>=0 && i<p.work.notes.count {
+                p.work.notes[i].beat=clamp(p.work.notes[i].beat+shift,0,p.work.length_beats.(float)-0.5);
+                p.work.notes[i].lane=clamp(p.work.notes[i].lane+delta,0,3);
+                p.work.notes[i].side=p.editor_side;
+            }
+        }
+        normalize_chart(p.work); p.selection.clear(); mark_work_dirty(p); return;
+    }
+    remember_chart(p);
+    p.chart_cursor=row;
+    rhythm_sound(p,"sfx/click.wav",0.22);
+    if target>=0 {
+        p.work.notes[target].hold=([6]float){0,0.25,0.5,1,2,4}[clamp(p.editor_hold,0,5)];
+    } else if beat<p.work.length_beats.(float) && p.work.notes.count<2048 {
+        p.work.notes.append(.{beat=beat,lane=lane,side=p.editor_side,hold=([6]float){0,0.25,0.5,1,2,4}[clamp(p.editor_hold,0,5)]});
+    }
+    unlock_achievement(p,14); mark_work_dirty(p);
+}
+copy_selection :: proc(p: Player) {
+    p.clipboard.clear();
+    if p.selection.count==0 {
+        for n: p.work.notes { if n.beat>=p.editor_page.(float)*chart_span(p) && n.beat<(p.editor_page+1).(float)*chart_span(p) && n.side==p.editor_side { p.clipboard.append(n); } }
+    } else {
+        for i: p.selection { if i>=0 && i<p.work.notes.count { p.clipboard.append(p.work.notes[i]); } }
+    }
+    p.editor_status=`Copied {p.clipboard.count} notes`;
+}
+paste_selection :: proc(p: Player) {
+    if p.clipboard.count==0 { return; }
+    remember_chart(p);
+    first:=p.clipboard[0].beat; for n: p.clipboard { first=min(first,n.beat); }
+    p.selection.clear();
+    for copied: p.clipboard {
+        n:=copied; n.beat=n.beat-first+p.editor_page.(float)*chart_span(p); n.side=p.editor_side;
+        if n.beat>=p.work.length_beats.(float) || p.work.notes.count>=2048 { continue; }
+        duplicate:=false;
+        for existing: p.work.notes { if existing.side==n.side && existing.lane==n.lane && abs(existing.beat-n.beat)<0.01 { duplicate=true; break; } }
+        if !duplicate { p.selection.append(p.work.notes.count); p.work.notes.append(n); }
+    }
+    mark_work_dirty(p);
+}
+preview_song :: proc(p: Player) {
+    if p.preview_playing { SFX.stop(p.preview_id); p.preview_playing=false; return; }
+    d:=SFX.default_sfx_desc(); d.specific_to_player=p; d.entity_to_follow=p.entity.id; d.volume=p.volume; d.channel=.MUSIC;
+    d.speed=p.work.bpm/song_bpms[clamp(p.work.audio,0,11)];
+    p.preview_id=SFX.play(get_asset(SFX_Asset,music_path(p.work.audio)),d);
+    p.preview_playing=true; p.preview_start=get_time();
+}
+
+creator_event :: proc(p: Player, e: UIDoc_Event) {
+    h:=e.handler;
+    if h=="event:undo" { restore_chart(p,false); return; }
+    if h=="event:redo" { restore_chart(p,true); return; }
+    if h=="event:cursor" { p.chart_cursor=clamp(read_index(e.key),0,15); return; }
+    if h=="event:back" {
+        save_work(p); p.preview_only=false; p.in_test=false; leave_song(p); return;
+    }
+    if h=="event:snap" { p.editor_snap=(p.editor_snap+1)%3; p.editor_page=0; return; }
+    if h=="event:show-preview" { p.preview_only=true; return; }
+    if h=="event:hide-preview" { p.preview_only=false; return; }
+    if h=="event:tab" {
+        tab:=read_index(e.key); if tab>=0 && tab<10 { p.editor_tab=tab; p.selection.clear(); }
+        if tab==9 { refresh_public_mods(p); }
+        return;
+    }
+    for lane: 0..<4 { if h==`event:cell{lane}` { chart_cell(p,e.key+":"+int_text(lane)); return; } }
+    if h=="event:tool" { p.editor_tool=(p.editor_tool+1)%4; return; }
+    if h=="event:side" { p.editor_side=1-p.editor_side; p.selection.clear(); return; }
+    if h=="event:hold" { p.editor_hold=(p.editor_hold+1)%6; return; }
+    if h=="event:page-prev" { p.editor_page=max(0,p.editor_page-1); return; }
+    if h=="event:page-next" { p.editor_page=min(ceil(p.work.length_beats.(float)/chart_span(p)).(int)-1,p.editor_page+1); return; }
+    if h=="event:zoom-in" { p.editor_zoom=min(1.6,p.editor_zoom+0.1); return; }
+    if h=="event:zoom-out" { p.editor_zoom=max(0.6,p.editor_zoom-0.1); return; }
+    if h=="event:copy" { copy_selection(p); return; }
+    if h=="event:paste" { paste_selection(p); return; }
+    if h=="event:select-page" {
+        p.selection.clear();
+        for n,i: p.work.notes { if n.side==p.editor_side && n.beat>=p.editor_page.(float)*chart_span(p) && n.beat<(p.editor_page+1).(float)*chart_span(p) { p.selection.append(i); } }
+        p.editor_tool=1; return;
+    }
+    if h=="event:delete-selected" {
+        if p.selection.count==0 { return; }
+        remember_chart(p);
+        for i: 0..<p.work.notes.count #reverse { if selected_note(p,i) { p.work.notes.ordered_remove_by_index(i); } }
+        p.selection.clear(); mark_work_dirty(p); return;
+    }
+    if h=="event:test" {
+        save_work(p,true); p.mode=0; p.opponent_id=""; begin_song(p,true,true); return;
+    }
+    if h=="event:preview" { preview_song(p); return; }
+    if h=="event:pose-idle" { if p.voice_preview!=null { stop_note_voice(p.voice_preview); p.voice_preview=null; } for c: component_iterator(Rhythm_Performer) { if c.owner_id==p.get_user_id() && c.role==p.voice_editor_side { remove_effect(c.entity,Singing_Pose,true); } } if p.voice_editor_side==1 { p.player_pose_time=-10; p.player_missed=false; } else { p.bot_pose_time=-10; p.bot_missed=false; } return; }
+    for lane: 0..<4 { if (h==([4]string){"event:pose-left","event:pose-down","event:pose-up","event:pose-right"}[lane]) { preview_character_voice(p,lane); return; } }
+    if h=="event:pose-miss" { preview_character_voice(p,(p.player_direction+1)%4,true); return; }
+    if h=="event:save" { save_work(p,true); return; }
+    if h=="event:new-mod" {
+        if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+        save_work(p);
+        if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+        p.work=new_song_mod(); p.editor_page=0; p.selection.clear();
+        mark_work_dirty(p); rebuild_stage_props(p); return;
+    }
+    if h=="event:load-mod" {
+        for m: p.custom_library.mods { if m.id==e.key { save_work(p); p.work=clone_mod(m); p.selection.clear(); p.editor_page=0; rebuild_stage_props(p); break; } }
+        return;
+    }
+    if h=="event:delete-mod" {
+        if p.pending_delete_mod!=e.key { p.pending_delete_mod=e.key; p.editor_status="Delete again to confirm"; return; }
+        p.pending_delete_mod="";
+        for m,i: p.custom_library.mods {
+            if m.id==e.key {
+                p.custom_library.mods.ordered_remove_by_index(i);
+                if p.work.id==m.id { p.work=p.custom_library.mods.count>0 ? clone_mod(p.custom_library.mods[0]) : new_song_mod(); p.dirty=false; p.selection.clear(); p.editor_page=0; p.export_code=""; rebuild_stage_props(p); }
+                Save.set_json(p,"encore_library_v1",ref p.custom_library); break;
+            }
+        }
+        return;
+    }
+    if h=="event:duplicate-mod" {
+        if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+        save_work(p);
+        if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+        p.work=clone_mod(p.work); p.work.id=""; p.work.name += " Remix"; mark_work_dirty(p); return;
+    }
+    if h=="event:publish" { publish_work(p); return; }
+    if h=="event:unpublish" {
+        if p.publish_code==p.work.id { p.pending_publication=""; }
+        // Native deletes clear the local read cache optimistically. A saved
+        // tombstone gives us a real round-trip receipt before optional cleanup.
+        ensure_mod_id(p); Save.set_game_string("encore_mod_v1_"+p.work.id,REMOVED_PUBLICATION);
+        for i: 0..<p.public_mods.count #reverse { if p.public_mods[i].code==p.work.id { p.public_mods.ordered_remove_by_index(i); } }
+        p.unpublish_code=p.work.id; p.unpublish_started=get_time(); p.unpublish_check_due=get_time()+1;
+        p.editor_status="Unpublishing…"; return;
+    }
+    if h=="event:import" { import_mod_code(p,p.import_code); return; }
+    if h=="event:export" {
+        publish_work(p); return;
+    }
+    if h=="event:add-prop" {
+        if p.work.objects.count<32 { p.work.objects.append(.{kind=0,x=0,y=-2,size=0.5}); p.selected_prop=p.work.objects.count-1; mark_work_dirty(p); rebuild_stage_props(p); unlock_achievement(p,15); }
+        return;
+    }
+    if h=="event:prop-select" { p.selected_prop=clamp(read_index(e.key),0,max(0,p.work.objects.count-1)); return; }
+    if h=="event:remove-prop" {
+        if p.selected_prop>=0 && p.selected_prop<p.work.objects.count { p.work.objects.ordered_remove_by_index(p.selected_prop); p.selected_prop=max(0,p.selected_prop-1); mark_work_dirty(p); rebuild_stage_props(p); }
+        return;
+    }
+    if h=="event:add-event" {
+        if p.work.events.count<128 { p.work.events.append(.{beat=p.editor_page.(float)*chart_span(p),kind=0,strength=0.3,duration=1,text="Encore!"}); p.selected_event=p.work.events.count-1; mark_work_dirty(p); }
+        return;
+    }
+    if h=="event:event-select" { p.selected_event=clamp(read_index(e.key),0,max(0,p.work.events.count-1)); return; }
+    if h=="event:remove-event" {
+        if p.selected_event>=0 && p.selected_event<p.work.events.count { p.work.events.ordered_remove_by_index(p.selected_event); p.selected_event=max(0,p.selected_event-1); mark_work_dirty(p); }
+        return;
+    }
+    if h=="event:plus" || h=="event:minus" || h=="event:cycle" {
+        direction:=h=="event:minus" ? -1.0 : 1.0; adjust_creator_field(p,e.key,direction); mark_work_dirty(p); return;
+    }
+}
+
+adjust_creator_field :: proc(p: Player,key: string,d: float) {
+    m:=p.work;
+    if key=="voice-side" { p.voice_editor_side=1-p.voice_editor_side; return; }
+    if key=="voice-hold" { preview_character_voice(p,0,false,true); return; }
+    if key=="voice-type" || key=="voice-style" || key=="voice-tone" || key=="voice-effect" || key=="pitch" {
+        kind,tone,effect,style,pitch:=voice_settings(p,p.voice_editor_side,true);
+        step:=d.(int);
+        if key=="voice-type" { kind=(kind+step+7)%7; }
+        if key=="voice-style" { style=(style+step+3)%3; }
+        if key=="voice-tone" { tone=(tone+step+3)%3; }
+        if key=="voice-effect" { effect=(effect+step+3)%3; }
+        if key=="pitch" { pitch=clamp(pitch+d*0.05,0.65,1.6); }
+        if p.voice_editor_side==1 {
+            m.voice_type=kind; m.voice_style=style; m.voice_tone=tone; m.voice_effect=effect; m.pitch=pitch;
+        } else {
+            m.rival_voice_type=kind; m.rival_voice_style=style; m.rival_voice_tone=tone; m.rival_voice_effect=effect; m.rival_pitch=pitch;
+        }
+        preview_character_voice(p,p.player_direction);
+        return;
+    }
+    switch key {
+        case "bpm": m.bpm=clamp(m.bpm+d*2,60,200);
+        case "duration": { m.length_beats=clamp(m.length_beats+d.(int)*16,16,512); sanitize_mod(m); p.selection.clear(); p.editor_page=min(p.editor_page,ceil(m.length_beats.(float)/chart_span(p)).(int)-1); }
+        case "difficulty": m.difficulty=(m.difficulty+1)%3;
+        case "audio": m.audio=(m.audio+1)%12;
+        case "stage": { m.stage=(m.stage+1)%4; rebuild_stage_props(p); }
+        case "player-color": { m.player_color=(m.player_color+1)%Color_Replace_Color.COUNT.(int); unlock_achievement(p,16); }
+        case "rival-color": m.rival_color=(m.rival_color+1)%Color_Replace_Color.COUNT.(int);
+        case "pitch": m.pitch=clamp(m.pitch+d*0.05,0.65,1.6);
+        case "animation-speed": m.animation_speed=clamp(m.animation_speed+d*0.1,0.5,1.5);
+        case "mic-size": m.mic_size=clamp(m.mic_size+d*0.025,0.1,0.4);
+        case "mic-x": m.mic_x=clamp(m.mic_x+d*0.01,-0.15,0.15);
+        case "mic-y": m.mic_y=clamp(m.mic_y+d*0.01,-0.1,0.2);
+        case "mic-style": m.mic_style=(m.mic_style+1)%3;
+        case "skin": m.note_skin=(m.note_skin+1)%3;
+        case "theme": m.theme=(m.theme+1)%3;
+        case "glow": m.glow=clamp(m.glow+d*0.1,0,1.5);
+        case "trails": m.trails=!m.trails;
+        case "particles": m.particles=!m.particles;
+        case "hud-x": m.hud_x=clamp(m.hud_x+d*10,-80,80);
+        case "health-y": m.health_y=clamp(m.health_y+d*10,0,100);
+    }
+    if p.selected_prop>=0 && p.selected_prop<m.objects.count {
+        i:=p.selected_prop;
+        switch key {
+            case "prop-kind": m.objects[i].kind=(m.objects[i].kind+1)%5;
+            case "prop-x": m.objects[i].x=clamp(m.objects[i].x+d*0.25,-10,10);
+            case "prop-y": m.objects[i].y=clamp(m.objects[i].y+d*0.25,-4,5);
+            case "prop-size": m.objects[i].size=clamp(m.objects[i].size+d*0.1,0.1,3);
+            case "prop-rotation": m.objects[i].rotation=(m.objects[i].rotation+d*15)%360;
+            case "prop-layer": m.objects[i].layer=clamp(m.objects[i].layer+d.(int),-3,1);
+        }
+        rebuild_stage_props(p);
+    }
+    if p.selected_event>=0 && p.selected_event<m.events.count {
+        i:=p.selected_event;
+        switch key {
+            case "event-kind": m.events[i].kind=(m.events[i].kind+1)%13;
+            case "event-beat": m.events[i].beat=clamp(m.events[i].beat+d*0.5,0,m.length_beats.(float)-1);
+            case "event-strength": m.events[i].strength=clamp(m.events[i].strength+d*0.1,0.1,1);
+            case "event-duration": m.events[i].duration=clamp(m.events[i].duration+d*0.5,0.5,8);
+        }
+    }
+}
+
+publish_work :: proc(p: Player) {
+    if p.perf_active { p.editor_status="Performance fixtures cannot be published"; return; }
+    sanitize_mod(p.work);
+    if p.work.notes.count==0 { p.editor_status="Add notes before publishing"; return; }
+    save_work(p,true);
+    if p.dirty { return; }
+    publication:=new(Published_Mod); publication.code=p.work.id; publication.author_id=p.get_user_id();
+    publication.author=p.get_username(); publication.mod=clone_mod(p.work);
+    payload:=JSON.serialize(ref publication);
+    if p.unpublish_code==p.work.id { p.unpublish_code=""; }
+    Save.set_game_string("encore_mod_v1_"+p.work.id,encode_publication(payload));
+    // A queued Save write is NOT confirmation that other players can download it.
+    p.export_code=p.work.id; p.publish_code=p.work.id; p.pending_publication=payload;
+    p.publish_started=get_time(); p.publish_check_due=get_time()+1;
+    p.editor_status="Publishing…";
+}
+refresh_public_mods :: proc(p: Player) {
+    p.public_mods.clear();
+    for entry: Save.get_all_game_strings() {
+        if entry.value==REMOVED_PUBLICATION { continue; }
+        if p.unpublish_code.count>0 && entry.key=="encore_mod_v1_"+p.unpublish_code { continue; }
+        if entry.key.count>14 && string_substring(entry.key,0,14)=="encore_mod_v1_" {
+            m: Published_Mod;
+            // Only our engine-authored schema is read, never arbitrary external JSON.
+            if JSON.try_deserialize(decode_publication(entry.value),ref m) && m!=null && m.mod!=null { sanitize_mod(m.mod); p.public_mods.append(m); }
+        }
+        if p.public_mods.count>=100 { break; }
+    }
+}
+import_mod_code :: proc(p: Player, code: string) {
+    if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+    code=string_trim(code); if !safe_share_code(code) { p.editor_status="Enter a published share code"; return; }
+    payload:=decode_publication(Save.get_game_string("encore_mod_v1_"+code,""));
+    if payload==REMOVED_PUBLICATION { p.editor_status="This song is no longer published"; return; }
+    if payload.count==0 { p.editor_status="Code not found · try again after sync"; return; }
+    publication: Published_Mod;
+    if !JSON.try_deserialize(payload,ref publication) || publication==null || publication.mod==null { p.editor_status="Mod unavailable"; return; }
+    save_work(p);
+    if p.custom_library.mods.count>=32 { p.editor_status="Library full · delete a mod first"; return; }
+    p.work=clone_mod(publication.mod); p.work.id=""; ensure_mod_id(p); save_work(p);
+    p.editor_status="Imported into your library"; rebuild_stage_props(p);
+}
+
+
+
+
+chart_step :: proc(p: Player) -> float { return ([3]float){0.25,0.5,1}[clamp(p.editor_snap,0,2)]; }
+chart_span :: proc(p: Player) -> float { return chart_step(p)*16; }
+
+update_publication :: proc(p: Player) {
+    if p.pending_publication.count==0 || get_time()<p.publish_check_due { return; }
+    p.publish_check_due=get_time()+1;
+    if decode_publication(Save.get_game_string("encore_mod_v1_"+p.publish_code,""))==p.pending_publication {
+        publication: Published_Mod;
+        if JSON.try_deserialize(p.pending_publication,ref publication) && publication!=null {
+            for i: 0..<p.public_mods.count #reverse { if p.public_mods[i].code==publication.code { p.public_mods.ordered_remove_by_index(i); } }
+            p.public_mods.append(publication);
+            p.editor_status="Published · share this code"; unlock_achievement(p,17);
+        }
+        p.pending_publication="";
+    } else if get_time()-p.publish_started>180 {
+        p.pending_publication="";
+        p.editor_status="Sharing unavailable · local copy saved";
+    }
+}
+update_unpublication :: proc(p: Player) {
+    if p.unpublish_code.count==0 || get_time()<p.unpublish_check_due { return; }
+    p.unpublish_check_due=get_time()+1;
+    if Save.get_game_string("encore_mod_v1_"+p.unpublish_code,"")==REMOVED_PUBLICATION {
+        // If this cleanup cannot finish before shutdown, the durable marker
+        // already keeps the song out of discovery and download.
+        Save.delete_game_key("encore_mod_v1_"+p.unpublish_code);
+        p.unpublish_code=""; p.editor_status="Unpublished · local copy kept";
+    } else if get_time()-p.unpublish_started>180 {
+        p.unpublish_code=""; p.editor_status="Removal delayed · try again";
+    }
+}

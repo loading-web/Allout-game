@@ -1,0 +1,316 @@
+3e11ffec0545430d.png
+	size: 2032, 1670
+	filter: Linear, Linear
+Studios/Dance_Curtains
+	bounds: 2, 126, 637, 422
+	offsets: 1, 1, 639, 424
+	rotate: 90
+Studios/Dance_Floor
+	bounds: 850, 258, 508, 298
+	offsets: 1, 1, 510, 300
+	rotate: 90
+Studios/Dance_Notes
+	bounds: 2, 2, 87, 122
+Studios/Dance_Phone
+	bounds: 561, 766, 87, 285
+	offsets: 2, 1, 90, 288
+Studios/Dance_Speakers
+	bounds: 426, 187, 577, 157
+	rotate: 90
+Studios/Dance_SpeakersCircles
+	bounds: 1921, 170, 56, 102
+	offsets: 511, 19, 577, 157
+	rotate: 90
+Studios/Dance_SpotLights
+	bounds: 585, 193, 571, 263
+	offsets: 1, 2, 573, 266
+	rotate: 90
+VFX/explosion/Ex_Orange
+	bounds: 1150, 355, 364, 411
+VFX/explosion/Ex_Red
+	bounds: 301, 1053, 546, 615
+	offsets: 1, 2, 551, 623
+VFX/explosion/Ex_Yellow
+	bounds: 650, 768, 251, 283
+VFX/explosion/ExplosionResidue
+	bounds: 849, 1220, 448, 319
+	offsets: 3, 31, 465, 361
+	rotate: 90
+VFX/explosion/Smoke1
+	bounds: 1638, 906, 80, 82
+	offsets: 1, 1, 82, 84
+	rotate: 90
+VFX/explosion/UP_SmokeLine
+	bounds: 2, 765, 903, 297
+	rotate: 90
+VFX/fire_burnup/ashes/ashes_1
+	bounds: 1177, 1059, 173, 107
+	offsets: 1, 1, 175, 109
+	rotate: 90
+VFX/fire_burnup/ashes/ashes_2
+	bounds: 849, 1055, 163, 103
+	offsets: 1, 1, 165, 106
+	rotate: 90
+VFX/fire_burnup/ashes/ashes_3
+	bounds: 91, 3, 136, 121
+	offsets: 1, 1, 138, 123
+VFX/fire_burnup/ashes/ashes_4
+	bounds: 389, 6, 118, 156
+	offsets: 1, 1, 120, 159
+	rotate: 90
+VFX/fire_burnup/ashes/ashes_5
+	bounds: 1286, 1071, 108, 161
+	offsets: 1, 1, 110, 163
+VFX/fire_burnup/ashes/ashes_6
+	bounds: 788, 10, 112, 181
+	offsets: 1, 1, 114, 183
+VFX/fire_burnup/crew_blasted1
+	bounds: 954, 1057, 161, 221
+	offsets: 1, 1, 163, 223
+	rotate: 90
+VFX/fire_burnup/crew_blasted2
+	bounds: 1516, 506, 114, 263
+	offsets: 1, 1, 116, 264
+VFX/fire_burnup/crew_blasted3
+	bounds: 1582, 31, 101, 270
+	offsets: 1, 1, 103, 271
+VFX/fire_burnup/crew_blasted4
+	bounds: 1315, 771, 87, 298
+	offsets: 1, 0, 89, 298
+VFX/fire_burnup/crew_blasted5
+	bounds: 301, 765, 52, 286
+	offsets: 1, 1, 54, 288
+VFX/fire_burnup/crew_burning1
+	bounds: 1732, 278, 155, 199
+	offsets: 1, 1, 157, 201
+	rotate: 90
+VFX/fire_burnup/crew_burning2
+	bounds: 1514, 1077, 155, 209
+	offsets: 1, 1, 157, 211
+	rotate: 90
+VFX/fire_burnup/fire1
+	bounds: 903, 776, 200, 277
+	offsets: 1, 1, 202, 279
+VFX/fire_burnup/fire2
+	bounds: 355, 766, 204, 285
+	offsets: 1, 1, 206, 287
+VFX/fire_burnup/fire3
+	bounds: 1725, 873, 207, 293
+	offsets: 1, 1, 209, 295
+	rotate: 90
+VFX/fire_burnup/fire4
+	bounds: 1105, 768, 208, 287
+	offsets: 1, 1, 210, 289
+VFX/frozen/crew_frozen
+	bounds: 1222, 4, 349, 178
+	offsets: 1, 1, 351, 180
+	rotate: 90
+VFX/frozen/crew_frozen_cracks
+	bounds: 1402, 4, 349, 178
+	offsets: 1, 1, 351, 180
+	rotate: 90
+VFX/frozen/crew_frozen_dust
+	bounds: 1404, 771, 303, 232
+	offsets: 12, 9, 329, 249
+	rotate: 90
+VFX/frozen/crew_frozen_shatter
+	bounds: 1572, 1537, 64, 50
+	offsets: 1, 45, 292, 153
+VFX/frozen/crew_frozen_shatter2
+	bounds: 1933, 228, 86, 72
+	offsets: 126, 80, 292, 153
+VFX/frozen/crew_frozen_shatter3
+	bounds: 1725, 1082, 49, 76
+	offsets: 242, 30, 292, 153
+VFX/frozen/crew_frozen_shatter4
+	bounds: 1586, 1337, 57, 47
+	offsets: 100, 1, 292, 153
+	rotate: 90
+VFX/shocked/electrocute_1
+	bounds: 1638, 435, 375, 364
+	offsets: 10, 48, 400, 460
+VFX/shocked/electrocute_2
+	bounds: 1170, 1234, 324, 434
+	offsets: 0, 39, 355, 500
+VFX/shocked/electrocute_3
+	bounds: 1638, 1330, 338, 388
+	offsets: 19, 17, 357, 450
+	rotate: 90
+VFX/shocked/electrocute_crew
+	bounds: 959, 9, 192, 247
+	offsets: 0, 1, 192, 248
+VFX/shocked/electrocute_crew_3
+	bounds: 1780, 1136, 192, 245
+	offsets: 0, 2, 192, 248
+	rotate: 90
+VFX/teleport/teleport_lines
+	bounds: 2015, 665, 15, 206
+	offsets: 1, 0, 17, 206
+VFX/teleport/teleport_rings
+	bounds: 1776, 1089, 226, 45
+	offsets: 1, 1, 228, 48
+crewmate/full pose/crew_crushed
+	bounds: 681, 4, 187, 105
+	offsets: 1, 1, 189, 107
+	rotate: 90
+crewmate/hands/hand_L_fist
+	bounds: 1838, 78, 74, 62
+	offsets: 1, 1, 76, 64
+crewmate/hands/hand_L_flat
+	bounds: 629, 25, 100, 50
+	offsets: 1, 1, 102, 52
+	rotate: 90
+crewmate/hands/hand_L_floor_curled
+	bounds: 1917, 808, 79, 63
+	offsets: 1, 1, 81, 65
+crewmate/hands/hand_L_hip
+	bounds: 1685, 2, 75, 71
+	offsets: 1, 1, 77, 73
+crewmate/hands/hand_L_hold
+	bounds: 1721, 802, 72, 69
+	offsets: 1, 1, 74, 71
+crewmate/hands/hand_L_inair
+	bounds: 1838, 142, 80, 75
+	offsets: 1, 1, 82, 77
+crewmate/hands/hand_L_reachout
+	bounds: 1153, 5, 97, 62
+	offsets: 1, 1, 99, 64
+	rotate: 90
+crewmate/hands/hand_L_throw
+	bounds: 1933, 302, 87, 57
+	offsets: 1, 1, 89, 59
+crewmate/hands/hand_L_throwdown
+	bounds: 1572, 1589, 64, 79
+	offsets: 1, 1, 66, 81
+crewmate/hands/hand_L_wave
+	bounds: 1627, 1236, 86, 92
+	offsets: 1, 1, 88, 93
+crewmate/hands/hand_R_fist
+	bounds: 1795, 802, 69, 61
+	offsets: 1, 1, 71, 63
+	rotate: 90
+crewmate/hands/hand_R_flat
+	bounds: 1572, 1234, 95, 53
+	offsets: 1, 1, 97, 55
+	rotate: 90
+crewmate/hands/hand_R_floor_curled
+	bounds: 1153, 174, 82, 67
+	offsets: 1, 1, 84, 69
+	rotate: 90
+crewmate/hands/hand_R_hip
+	bounds: 1153, 104, 68, 67
+	offsets: 1, 1, 70, 69
+	rotate: 90
+crewmate/hands/hand_R_hold
+	bounds: 1516, 356, 75, 77
+	offsets: 1, 1, 77, 79
+crewmate/hands/hand_R_inair
+	bounds: 1496, 1396, 81, 74
+	offsets: 1, 1, 83, 76
+	rotate: 90
+crewmate/hands/hand_R_reachout
+	bounds: 1933, 361, 87, 72
+	offsets: 1, 1, 89, 74
+crewmate/hands/hand_R_throw
+	bounds: 1496, 1479, 83, 74
+	offsets: 1, 1, 85, 76
+	rotate: 90
+crewmate/hands/hand_R_wave
+	bounds: 1638, 988, 83, 87
+	offsets: 1, 1, 85, 89
+crewmate/run/leg_L_run1
+	bounds: 1838, 219, 81, 57
+	offsets: 1, 1, 83, 59
+crewmate/run/leg_L_run2
+	bounds: 1150, 258, 95, 70
+	offsets: 1, 1, 97, 72
+	rotate: 90
+crewmate/run/leg_L_run3
+	bounds: 1914, 78, 62, 56
+	offsets: 1, 1, 64, 58
+	rotate: 90
+crewmate/run/leg_L_run4
+	bounds: 1572, 1490, 64, 45
+	offsets: 1, 1, 66, 47
+crewmate/run/leg_R_run1
+	bounds: 511, 126, 78, 59
+	offsets: 1, 1, 80, 61
+crewmate/run/leg_R_run2
+	bounds: 1725, 1160, 78, 50
+	offsets: 1, 1, 80, 52
+	rotate: 90
+crewmate/run/leg_R_run3
+	bounds: 902, 117, 74, 54
+	offsets: 1, 1, 76, 56
+	rotate: 90
+crewmate/run/leg_R_run4
+	bounds: 902, 54, 54, 61
+	offsets: 1, 1, 56, 62
+crewmate/search/body
+	bounds: 1396, 1076, 116, 156
+	offsets: 1, 1, 118, 158
+crewmate/search/hand_L_search
+	bounds: 1762, 10, 63, 62
+	offsets: 1, 1, 65, 64
+	rotate: 90
+crewmate/search/hand_R_search
+	bounds: 1826, 10, 63, 62
+	offsets: 2, 1, 66, 64
+	rotate: 90
+crewmate/search/items/item1
+	bounds: 1890, 4, 72, 58
+	offsets: 1, 1, 74, 60
+	rotate: 90
+crewmate/search/items/shine_finditem
+	bounds: 1685, 75, 151, 151
+crewmate/search/pack
+	bounds: 1638, 801, 81, 103
+	offsets: 1, 1, 83, 105
+crewmate/shadow
+	bounds: 1593, 303, 136, 33
+	offsets: 1, 1, 138, 35
+	rotate: 90
+crewmate/stand/body_stand
+	bounds: 229, 4, 120, 158
+	offsets: 82, 72, 284, 301
+	rotate: 90
+crewmate/stand/leg_L_stand_M
+	bounds: 1858, 803, 57, 68
+	offsets: 39, 14, 135, 114
+crewmate/stand/leg_R_stand_M
+	bounds: 426, 126, 59, 83
+	offsets: 49, 28, 157, 144
+	rotate: 90
+crewmate/stand/pack
+	bounds: 547, 6, 80, 118
+	offsets: 62, 34, 197, 191
+crewmate/visors/visor
+	bounds: 1496, 1331, 88, 63
+	offsets: 1, 1, 90, 65
+crewmate/visors/visor_angry
+	bounds: 591, 127, 88, 64
+crewmate/visors/visor_closed
+	bounds: 1715, 1240, 88, 63
+	offsets: 1, 1, 90, 65
+	rotate: 90
+crewmate/visors/visor_cracked
+	bounds: 1516, 441, 88, 63
+	offsets: 1, 1, 90, 65
+crewmate/visors/visor_drained
+	bounds: 1496, 1564, 104, 74
+	offsets: 1, 1, 106, 76
+	rotate: 90
+crewmate/visors/visor_eyelid
+	bounds: 1572, 1396, 92, 63
+	offsets: 1, 1, 102, 65
+	rotate: 90
+crewmate/visors/visor_sad
+	bounds: 1496, 1234, 94, 74
+	offsets: 1, 1, 96, 76
+	rotate: 90
+crewmate/visors/visor_strain
+	bounds: 1628, 328, 102, 105
+	offsets: 1, 1, 104, 106
+crewmate/visors/visor_weary
+	bounds: 850, 193, 107, 63
+	offsets: 1, 1, 109, 65
