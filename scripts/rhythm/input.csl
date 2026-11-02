@@ -1,0 +1,8 @@
+rhythm_input :: proc(p: Player, params: ref Ability_Update_Params, lane: int) {
+    key:=control_keys[p.controls[lane]];
+    holding := Ability_Utilities.update_holding_ability(p,ref params,keybind=key);
+    was_held := p.lane_held[lane];
+    // Judge touch on the press edge, never after an artificial debounce delay.
+    p.lane_held[lane]=params.can_use && holding.active;
+    if params.can_use && ((p.lane_held[lane] && !was_held) || Keybinds.get_keybind_down(p,key)) { press_lane(p,lane); }
+}

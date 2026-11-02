@@ -1,0 +1,188 @@
+// Each user owns a separate ensemble. Only the visual child is hidden locally;
+// the enabled controller and all poses remain predicted and synchronized.
+Rhythm_Performer :: class : Component {
+    owner_id: string;
+    role: int;
+    visual: Entity;
+    rig: Spine_Animator;
+    last_pose: float = -100;
+    last_mic_size: float;
+    mic_texture_height: float;
+    last_speed: float = -1;
+    mic_id: u64;
+    last_mic_style: int = -1;
+    last_color: int = -1;
+    hand_base: v2;
+    mouth_id: u64;
+    mouth_visible: bool;
+    last_screen: int = -1;
+    mic_offset: v2;
+    microphone: Entity;
+    microphone_sprite: Sprite_Renderer;
+    singing_mouth: Entity;
+
+    ao_start :: method() {
+        entity.set_local_scale(role==1 ? v2{-1,1} : v2{1,1});
+        visual = Scene.create_entity(); visual.set_parent(entity,false);
+        visual.set_local_scale(role == 2 ? v2{1.85,1.85} : v2{2.7,2.7});
+        rig = visual.add_component(Spine_Animator);
+        rig.set_skeleton(get_asset(Spine_Asset,"$AO/streamed_character"));
+        rig.enable_skin("base/crewchsia"); rig.refresh_skins();
+        rig.set_animation(role == 2 ? "Emote/Sit_Down" : "Idle",true,0);
+        if role == 2 { rig.depth_offset = 3; }
+        hand_base = rig.get_bone_local_position("arm_R_IK");
+        if role<2 {
+            microphone=Scene.create_entity(); microphone.set_parent(visual,false);
+            microphone_sprite=microphone.add_component(Sprite_Renderer);
+            mic_texture:=get_asset(Texture_Asset,"UI/fnf_microphone.png");
+            microphone_sprite.set_texture(mic_texture);
+            mic_texture_height=max(0.01,mic_texture.get_world_size().y);
+            microphone_sprite.layer=1;
+            singing_mouth=Scene.create_entity(); singing_mouth.set_parent(visual,false);
+            mouth_sprite:=singing_mouth.add_component(Sprite_Renderer);
+            mouth_sprite.set_texture(get_asset(Texture_Asset,"UI/sing_mouth.png")); mouth_sprite.layer=1;
+            singing_mouth.set_local_scale({0.35,0.35}); singing_mouth.set_local_enabled(false);
+        }
+        refresh_visibility();
+    }
+
+    ao_update :: method(dt: float) {
+        p := find_player(owner_id); if p == null { return; }
+        if p.screen!=last_screen {
+            last_screen=p.screen;
+            if role<2 {
+                if p.screen==3 { rig.set_animation(p.result=="GAME OVER" ? "Death_No_HP" : "Emote/Dance_Simple",p.result!="GAME OVER",0); }
+                else { rig.set_animation("Idle",true,0); }
+            }
+        }
+        center := p.screen == 5 ? p.work.stage.(float)*42.0 : p.stage.(float)*42.0;
+        if p.screen == 0 || p.screen == 1 || p.screen == 4 || p.screen == 6 || p.screen == 7 || p.screen == 8 || p.screen==9 { center = song_stage(p.song).(float)*42.0; }
+        phase_time := p.screen == 2 ? p.song_time : get_time();
+        bpm := p.screen == 5 ? p.work.bpm : p.bpm;
+        phase := ((phase_time*bpm/60)%1+1)%1;
+        bop := pow(1-phase,3);
+        pos := v2{center+(role == 0 ? -5.2 : (role == 1 ? 5.2 : (role>2 ? -8.0 : 0))),role == 2 ? -0.55 : -2.6};
+        teleported:=abs(entity.world_position.x-pos.x)>10;
+        entity.set_world_position(pos+v2{0,0.07*bop});
+        if teleported { entity.mark_teleported(); }
+        actor_p := p;
+        if role == 0 && (p.mode == 2 || p.mode==3) {
+            other := find_player(p.opponent_id); if other != null { actor_p = other; }
+        }
+        stamp := role == 1 || actor_p != p ? actor_p.player_pose_time : p.bot_pose_time;
+        if p.screen != 2 && role < 2 && stamp != last_pose && get_time()-stamp < 0.4 {
+            last_pose = stamp;
+            pose := new(Singing_Pose);
+            pose.direction = role == 1 || actor_p != p ? actor_p.player_direction : p.bot_direction;
+            pose.missed = role == 1 || actor_p != p ? actor_p.player_missed : p.bot_missed;
+            pose.set_duration(0.32);
+            set_active_effect(entity,pose);
+        }
+        settings: Song_Mod;
+        if p.screen == 5 { settings = p.work; } else if p.using_custom { settings = p.playing_mod; }
+        color := role == 2 ? 1 : (role == 1 ? 2 : 12);
+        // The signature opponent retains the same appearance across every week.
+        if settings==null && role==1 && p.equipped_style>=0 && (p.achievements & (1<<p.equipped_style))!=0 { color=style_color(p.equipped_style); }
+        if settings != null && role != 2 { color = role == 1 ? settings.player_color : settings.rival_color; }
+        if color != last_color { last_color = color; rig.set_color_replace_color(clamp(color,0,Color_Replace_Color.COUNT.(int)-1).(Color_Replace_Color)); }
+        if role != 2 {
+            mic_size := settings != null ? settings.mic_size : 0.25;
+            style := settings != null ? settings.mic_style : 0;
+            offset:=settings != null ? v2{settings.mic_x,settings.mic_y} : v2{0.02,0.05};
+            if last_mic_size != mic_size || last_mic_style != style || mic_offset!=offset {
+                if mic_id != 0 { rig.instance.clear_attachment_sprite(mic_id); }
+                desc := Attachment_Desc.default(); desc.scale = {mic_size,mic_size};
+                desc.offset = settings != null ? v2{settings.mic_x,settings.mic_y} : v2{0.02,0.05};
+                desc.rotation_degrees = style == 1 ? 25 : 40;
+                desc.color = style == 2 ? v4{0.3,1,1,1} : v4{1,1,1,1};
+                // The child follows the bone pose and inherits the visual's beat
+                // motion. Keeping it a renderer also survives streamed rig swaps.
+                mic_id=0;
+                last_mic_size = mic_size; last_mic_style = style;
+                mic_offset=offset;
+                if #alive(microphone) {
+                    scale:=mic_size*1.5/max(0.01,mic_texture_height);
+                    microphone.set_local_scale({scale,scale});
+                    microphone_sprite.color=style==2 ? v4{0.3,1,1,1} : v4{1,1,1,1};
+                }
+            }
+        }
+        speed:=bpm/120 * (settings != null ? settings.animation_speed : 1);
+        if speed!=last_speed { rig.speed_multiplier=speed; last_speed=speed; }
+    }
+
+    ao_late_update :: method(dt: float) {
+        p := find_player(owner_id); if p == null || !#alive(rig) { return; }
+        bpm:=p.screen==5 ? p.work.bpm : p.bpm;
+        phase := (((p.screen == 2 ? p.song_time : get_time())*bpm/60)%1+1)%1;
+        bop := pow(1-phase,3);
+        amount := 0.0; direction := 0; missed := false;
+        if pose, ok := get_effect(entity,Singing_Pose); ok {
+            amount = min(1,pose.get_duration_remaining()/0.12); direction = pose.direction; missed = pose.missed;
+        }
+        singing := amount > 0.15 && !missed;
+        if p.screen==2 && role<2 {
+            // Read the same absolute chart clock as queued vocals. Judgments,
+            // bot accuracy and input calibration never move the performance.
+            actor:=p; side:=role;
+            if role==0 && (p.mode==2 || p.mode==3) {
+                rival:=find_player(p.opponent_id);
+                if rival!=null && rival.screen==2 { actor=rival; side=1; }
+            }
+            direction,amount,singing=chart_singing_pose(actor,side,get_time()-actor.start_time);
+            missed=false;
+        }
+        // Bop is never removed during rests; directional poses blend back into it.
+        lean := direction == 0 ? -1.0 : (direction == 3 ? 1.0 : 0.0);
+        lean *= role==1 ? -1.0 : 1.0;
+        vertical := direction == 1 ? -0.08 : (direction == 2 ? 0.07 : 0.0);
+        visual.set_local_position({lean*0.13*amount,vertical*amount});
+        visual.set_local_rotation(lean*(missed ? 11.0 : 6.0)*amount + (role == 2 ? sin(phase*PI*2)*3 : 0));
+        sx := 2.7;
+        if role == 2 { sx = 1.85; }
+        visual.set_local_scale({sx*(1+bop*0.012),abs(sx)*(1-bop*0.022)});
+        if role != 2 {
+            // Move the arm IK target, not the hand relative to its elbow.
+            // The old Hand_R offset lifted the fist far above the shoulder.
+            rig.instance.set_bone_local_position("arm_R_IK",{0.30+lean*0.025*amount,0.18+(missed ? -0.04 : 0.07)*amount+vertical*amount});
+            rig.instance.set_bone_local_position("arm_L_IK",{-0.36,0.18+0.025*amount});
+            // Let the animated head keep its authored parent-relative pose.
+            // Whole-visual lean and bop already move the face with the body.
+            color := missed ? v4{1,0.45,0.6,1} : v4{1,1,1,1}; rig.color = color;
+            if #alive(microphone) {
+                hand,found:=rig.try_get_bone_local_transform("Hand_R");
+                if found {
+                    microphone.set_local_position(hand.position+v2{0.01+mic_offset.x,0.07+mic_offset.y});
+                    microphone.set_local_rotation((last_mic_style==1 ? -20.0 : -12.0)+lean*8*amount);
+                }
+            }
+        }
+        // Eyes and Mouth are children of Head. The setter takes parent-relative
+        // coordinates: adding the skeleton-space head position lifts them twice.
+        rig.instance.set_bone_local_position("Eyes",{0.07,0.155});
+        rig.instance.set_bone_local_position("Mouth",{0.08,-0.045});
+        if role != 2 {
+            // Mouth closes at the chart end, independently of the pose release.
+            if #alive(singing_mouth) {
+                singing_mouth.set_local_enabled(singing);
+                mouth,mouth_found:=rig.try_get_bone_local_transform("Mouth");
+                if mouth_found { singing_mouth.set_local_position(mouth.position); }
+            }
+            mouth_visible=singing;
+        }
+    }
+
+    refresh_visibility :: method() {
+        if Game.is_server() { return; } // Presentation only; never gates poses or state.
+        if !#alive(visual) { return; }
+        if p, ok := Game.get_local_player(); ok { visual.set_local_enabled(p.get_user_id() == owner_id); }
+    }
+    ao_on_state_sync :: method() { refresh_visibility(); }
+}
+
+spawn_ensemble :: proc(p: Player) {
+    for role: 0..<3 {
+        e := Scene.create_entity();
+        e.add_component(Rhythm_Performer,on_before_start=proc "init_rhythm_performer" (c: Rhythm_Performer) { c.owner_id=p.get_user_id(); c.role=role; });
+    }
+}

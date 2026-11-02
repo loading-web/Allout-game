@@ -1,0 +1,59 @@
+// Owner/editor fixture: current players get maximum legal charts, props and events.
+// Add three real local clients with client_action spawn_dummy_players before invoking.
+perf_test :: proc(admin: Player, scenario: int=0, note_count: int=2048) {
+    scenario=clamp(scenario,0,2); note_count=clamp(note_count,64,2048);
+    participants: [..]Player;
+    for p: component_iterator(Player) { participants.append(p); }
+    // Clear old pairs before cleanup so one participant cannot finish another new run.
+    for p: participants { p.opponent_id=""; }
+    for p: participants { leave_song(p); }
+    // Pair by stable user ids, never store ownership as component references.
+    for p,i: participants {
+        if p.dirty { save_work(p); }
+        if !p.perf_active { p.perf_original_work=p.work; }
+        p.perf_active=true; p.perf_scenario=scenario; p.perf_generation+=1;
+        p.perf_started=get_time(); p.story_active=false; p.mode=0;
+        p.work=new(Song_Mod); m:=p.work; m.id="perf_fixture"; m.name="Endgame performance fixture";
+        m.audio=11; m.bpm=164; m.stage=2; m.length_beats=512; m.difficulty=2;
+        for n: 0..<note_count {
+            m.notes.append(.{beat=n.(float)/4,lane=n%4,side=(n/4)%2,hold=n%8==0 ? 0.25 : 0.0});
+        }
+        for n: 0..<32 { m.objects.append(.{kind=n%4,x=-9+(n%8).(float)*2.5,y=-3+(n/8).(float)*2,size=0.4,layer=n%3==0 ? -1 : 0}); }
+        for n: 0..<128 { m.events.append(.{beat=n.(float)*4,kind=n%8,strength=0.3,duration=2}); }
+        p.song=11; p.difficulty=2; p.bot_level=3; p.opponent_id="";
+        if scenario==0 && participants.count>1 {
+            rival_index:=i%2==0 ? i+1 : i-1;
+            if rival_index<participants.count { p.mode=2; p.opponent_id=participants[rival_index].get_user_id(); }
+        }
+        begin_song(p,true,true);
+        late_time:=min(96.0,note_count.(float)*60/164/8);
+        p.start_time=get_time()-late_time; p.song_time=late_time; p.previous_song_time=late_time;
+        p.health=100; p.bot_health=100;
+        // Skip the already completed phrase, as a real late-song snapshot would.
+        for n: p.notes { if n.time+n.hold<late_time-0.5 { n.state=2; } }
+        if scenario==1 { SFX.stop(p.audio_id); p.screen=5; p.editor_tab=1; p.editor_page=24; rebuild_stage_props(p); }
+        if scenario==2 { finish_song(p,"VICTORY"); p.score=123456; p.best_combo=512; p.judged=2048; p.weight=2048; }
+        log_info(`PERF fixture scenario={scenario} player={p.get_user_id()} runtime_notes={p.notes.count} objects={m.objects.count} events={m.events.count}`);
+    }
+} @chat_command @owner_or_editor
+
+perf_stop :: proc(admin: Player) {
+    for p: component_iterator(Player) {
+        if !p.perf_active { continue; }
+        leave_song(p); p.perf_active=false; p.in_test=false; p.using_custom=false; p.screen=0;
+        p.work=p.perf_original_work; p.perf_original_work=null; p.playing_mod=null;
+        p.notes.clear(); p.note_timeline.clear(); p.note_index_count=-1; p.note_cursor=0;
+        p.active_sustains.clear(); p.selection.clear(); p.dirty=false;
+        rebuild_stage_props(p);
+    }
+} @chat_command @owner_or_editor
+
+// Local cosmetic instrumentation: inclusive CPU wall time of the local player's
+// late-update callback (input, camera, HUD, notes). Not whole-frame/GPU timing.
+perf_record :: proc(p: Player, started: s64) {
+    if !p.is_local() || !p.perf_active { return; }
+    age:=get_time()-p.perf_started;
+    if age<3 || age>8 { return; }
+    elapsed:=(get_nanoseconds_since_epoch()-started).(float)/1000000.0;
+    log_info(`PERF SAMPLE scenario={p.perf_scenario} generation={p.perf_generation} frame={get_frame_number()} late_ms={format_float(elapsed,decimals=4)}`);
+}

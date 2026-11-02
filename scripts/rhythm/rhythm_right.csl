@@ -1,0 +1,4 @@
+Rhythm_Right :: class : Ability_Base {
+    on_init :: method() { name="Right"; icon=get_asset(Texture_Asset,arrow_paths[3]); keybind_override=rhythm_keys[3]; draw_but_dont_use_keybind=true; }
+    on_update :: method(params: ref Ability_Update_Params) { rhythm_input(player,ref params,3); }
+}

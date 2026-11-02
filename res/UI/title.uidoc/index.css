@@ -1,0 +1,14 @@
+@font-face { font-family: "Marker"; src: url("fonts/PermanentMarker-Regular.ttf"); font-weight: 400; }
+* { box-sizing: border-box; }
+.black, .fade { position: fixed; inset: 0; background: #000; pointer-events: none; }
+.scene { position: fixed; inset: 0; }
+.wall { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shade { position: absolute; inset: 0; background: rgba(12,3,22,0.38); }
+.safe { position: fixed; inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 55px; font-family: "Marker", AllIn; }
+.credit { position: absolute; left: 7%; right: 7%; top: 42%; text-align: center; font-size: 52px; color: #fff5d9; text-shadow: 4px 5px #bd2389; }
+.brand { width: 820px; max-width: 92%; height: 560px; }
+.logo { width: 100%; height: 100%; object-fit: contain; }
+.prompt { height: 90px; width: 100%; margin-top: 35px; text-align: center; font-size: 36px; color: #d4ff45; outline-width: 3px; outline-color: #090513; text-shadow: 4px 5px #a32987; }
+.begin { position: fixed; inset: 0; width: 100%; height: 100%; background: transparent; border: 0; }
+.fade { pointer-events: none; }
+@media (max-width: 1100px) { .credit { font-size: 40px; } .prompt { font-size: 30px; } .brand { height: 460px; } }

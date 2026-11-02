@@ -1,0 +1,123 @@
+// Shared predicted audio path. SFX routes to each listener without local/server gates.
+voice_type_names: [7]string : {"Digital Cartoon", "Human Rapper", "Robot", "Alien", "Monster", "DJ", "Custom Synth"};
+voice_style_names: [3]string : {"Playful", "Smooth", "Punchy"};
+voice_tone_names: [3]string : {"Dark", "Balanced", "Bright"};
+voice_effect_names: [3]string : {"Signature", "Rounded", "Forward"};
+
+voice_settings :: proc(p: Player, side: int, preview: bool=false) -> (int, int, int, int, float) {
+    // Character identity is fixed across weeks, stages, modes and difficulties.
+    // Only an explicitly authored custom character can override this palette.
+    kind := side==1 ? 0 : 1;
+    tone:=1; effect:=0; style:=0; pitch:=1.0;
+    m:=preview ? p.work : p.playing_mod;
+    if (preview || p.using_custom) && m!=null {
+        kind=side==1 ? m.voice_type : m.rival_voice_type;
+        tone=side==1 ? m.voice_tone : m.rival_voice_tone;
+        effect=side==1 ? m.voice_effect : m.rival_voice_effect;
+        style=side==1 ? m.voice_style : m.rival_voice_style;
+        pitch=side==1 ? m.pitch : m.rival_pitch;
+    }
+    return clamp(kind,0,6),clamp(tone,0,2),clamp(effect,0,2),clamp(style,0,2),clamp(pitch,0.65,1.6);
+}
+
+play_voice_for :: proc(source: Player, listener: Player, n: Rhythm_Note, missed: bool, variation: int, preview: bool=false, delay: float=0) -> (u64,u64) {
+    kind,tone,effect,style,pitch:=voice_settings(source,n.side,preview);
+    folder:=`sfx/singers/{kind}_{tone}`;
+    ceiling:=([7]int){81,77,74,84,69,77,81}[kind];
+    anchors:=([4]int){ceiling-12,ceiling-8,ceiling-5,ceiling};
+    target:=n.vocal_midi>0 && !preview ? n.vocal_midi : anchors[n.lane];
+    while target>ceiling { target-=12; }
+    while target<ceiling-12 { target+=12; }
+    sample_lane:=0; distance:=100;
+    for anchor,i: anchors {
+        delta:=abs(target-anchor);
+        if delta<distance { sample_lane=i; distance=delta; }
+    }
+    // Tiny key-correct shifts (at most two semitones) preserve vowel identity.
+    pitch*=pow(2.0,(target-anchors[sample_lane]).(float)/12.0);
+    variation=clamp(n.lane,0,3); // Fixed syllable per lane; no random delivery.
+    d:=SFX.default_sfx_desc(); d.specific_to_player=listener; d.entity_to_follow=source.entity.id;
+    d.volume=listener.volume*([3]float){0.30,0.25,0.34}[style];
+    d.volume*=([3]float){1.0,0.92,1.06}[effect];
+    d.speed=pitch; d.speed_perturb=0; d.volume_perturb=0; d.delay=delay;
+    if !preview && n.voice_clip.count>0 {
+        // Baked from this exact note's MIDI and hold; ends at a sample boundary.
+        d.speed=1;
+        return SFX.play(get_asset(SFX_Asset,n.voice_clip),d),0;
+    }
+    if missed { return 0,0; }
+    return play_segmented_voice(source,listener,n,kind,tone,pitch,d.volume,delay),0;
+}
+
+sing_note :: proc(p: Player, n: Rhythm_Note, missed: bool, preview: bool=false) {
+    stop_note_voice(n);
+    slot:=n.side*4+n.lane;
+    variation:=n.lane;
+    p.voice_variants[slot]=variation;
+    p.voice_last_syllable[n.side]=variation;
+    n.voice_attack,n.voice_loop=play_voice_for(p,p,n,missed,variation,preview);
+    if !preview && n.side==1 && (p.mode==2 || p.mode==3) {
+        rival:=find_player(p.opponent_id);
+        if rival!=null && rival.screen==2 && rival.opponent_id==p.get_user_id() {
+            n.rival_voice_attack,n.rival_voice_loop=play_voice_for(p,rival,n,missed,variation);
+        }
+    }
+    if !preview { p.active_sustains.append(n); }
+}
+stop_note_voice :: proc(n: Rhythm_Note) {
+    for id: n.voice_segments { SFX.stop(id); }
+    n.voice_segments.clear();
+    if n.voice_loop!=0 { SFX.fade_out_and_stop(n.voice_loop,0.045); n.voice_loop=0; }
+    if n.rival_voice_loop!=0 { SFX.fade_out_and_stop(n.rival_voice_loop,0.045); n.rival_voice_loop=0; }
+    SFX.fade_out_and_stop(n.voice_attack,0.025); SFX.fade_out_and_stop(n.rival_voice_attack,0.025);
+    n.voice_attack=0; n.rival_voice_attack=0;
+}
+stop_character_voices :: proc(p: Player) {
+    for n: p.notes { stop_note_voice(n); }
+    p.active_sustains.clear();
+    if p.voice_preview!=null { stop_note_voice(p.voice_preview); p.voice_preview=null; }
+}
+update_character_voices :: proc(p: Player) {
+    if p.screen==2 {
+        ensure_note_index(p);
+        // Queue ahead using the same absolute start time as the backing track.
+        // Input calibration, bot offsets and judgment windows cannot move vocals.
+        while p.voice_cursor<p.note_timeline.count {
+            n:=p.note_timeline[p.voice_cursor];
+            delay:=p.start_time+n.time-get_time();
+            if delay>0.15 { break; }
+            p.voice_cursor+=1;
+            if n.voice_scheduled { continue; }
+            n.voice_scheduled=true;
+            // Never burst old notes after a seek, hotload or a stalled frame.
+            if delay<0 { continue; }
+            n.voice_attack,n.voice_loop=play_voice_for(p,p,n,false,n.lane,false,delay);
+            p.active_sustains.append(n);
+        }
+    }
+    for index: 0..<p.active_sustains.count #reverse {
+        n:=p.active_sustains[index];
+        duration:=n.hold>0 ? n.hold : 0.09;
+        if p.screen!=2 || get_time()>=p.start_time+n.time+duration {
+            // Stock clips self-terminate precisely; do not extend them with a fade.
+            if p.screen!=2 { stop_note_voice(n); }
+            // Every finite clip, including custom hold segments, self-terminates.
+            p.active_sustains.unordered_remove_by_index(index);
+        }
+    }
+    if p.voice_preview!=null && (p.screen!=5 || get_time()>=p.voice_preview_end) {
+        stop_note_voice(p.voice_preview); p.voice_preview=null;
+    }
+    if p.voice_preview!=null && p.voice_preview.hold>0 {
+        if p.voice_preview.side==1 && get_time()-p.player_pose_time>0.2 { p.player_pose_time=get_time(); }
+        if p.voice_preview.side==0 && get_time()-p.bot_pose_time>0.2 { p.bot_pose_time=get_time(); }
+    }
+}
+preview_character_voice :: proc(p: Player, lane: int, missed: bool=false, hold: bool=false) {
+    if p.voice_preview!=null { stop_note_voice(p.voice_preview); }
+    n:=new(Rhythm_Note); n.side=p.voice_editor_side; n.lane=clamp(lane,0,3); n.hold=hold ? 1.5 : 0;
+    p.voice_preview=n; p.voice_preview_end=get_time()+(hold ? 1.5 : 0.4);
+    if n.side==1 { p.player_direction=n.lane; p.player_pose_time=get_time(); p.player_missed=missed; }
+    else { p.bot_direction=n.lane; p.bot_pose_time=get_time(); p.bot_missed=missed; }
+    sing_note(p,n,missed,true);
+}

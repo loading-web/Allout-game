@@ -1,0 +1,58 @@
+Chart_Snapshot :: class {
+    notes: [..]Chart_Note;
+}
+chart_snapshot :: proc(p: Player) -> Chart_Snapshot {
+    result:=new(Chart_Snapshot);
+    for n: p.work.notes { result.notes.append(n); }
+    return result;
+}
+sync_chart_history :: proc(p: Player) {
+    if p.chart_history_work!=p.work {
+        p.chart_undo.clear(); p.chart_redo.clear(); p.chart_cursor=0;
+        p.chart_history_work=p.work;
+    }
+}
+remember_chart :: proc(p: Player) {
+    sync_chart_history(p);
+    if p.chart_undo.count>=32 { p.chart_undo.ordered_remove_by_index(0); }
+    p.chart_undo.append(chart_snapshot(p)); p.chart_redo.clear();
+}
+restore_chart :: proc(p: Player, redo: bool) {
+    sync_chart_history(p);
+    snapshot: Chart_Snapshot;
+    if redo {
+        if p.chart_redo.count==0 { return; }
+        p.chart_undo.append(chart_snapshot(p));
+        snapshot=p.chart_redo[p.chart_redo.count-1]; p.chart_redo.pop();
+    } else {
+        if p.chart_undo.count==0 { return; }
+        p.chart_redo.append(chart_snapshot(p));
+        snapshot=p.chart_undo[p.chart_undo.count-1]; p.chart_undo.pop();
+    }
+    p.work.notes.clear();
+    for n: snapshot.notes { p.work.notes.append(n); }
+    sanitize_mod(p.work); p.selection.clear(); mark_work_dirty(p);
+    rhythm_sound(p,"sfx/click.wav",0.35);
+}
+chart_key :: proc(p: Player, key: Input) -> bool {
+    return Keybinds.get_keybind_down(p,control_keys[control_index(key)]);
+}
+update_chart_keyboard :: proc(p: Player) {
+    modifier:=Keybinds.get_keybind_held(p,control_keys[control_index(.LEFT_CONTROL)]) || Keybinds.get_keybind_held(p,control_keys[control_index(.RIGHT_CONTROL)]);
+    if modifier {
+        if chart_key(p,.Z) { restore_chart(p,false); }
+        if chart_key(p,.Y) { restore_chart(p,true); }
+        if chart_key(p,.C) { copy_selection(p); }
+        if chart_key(p,.V) { paste_selection(p); }
+        return;
+    }
+    if chart_key(p,.SPACE) { preview_song(p); }
+    if chart_key(p,.UP) { p.chart_cursor=max(0,p.chart_cursor-1); }
+    if chart_key(p,.DOWN) { p.chart_cursor=min(15,p.chart_cursor+1); }
+    if chart_key(p,.PAGE_UP) { p.editor_page=max(0,p.editor_page-1); }
+    if chart_key(p,.PAGE_DOWN) { p.editor_page=min(ceil(p.work.length_beats.(float)/chart_span(p)).(int)-1,p.editor_page+1); }
+    keys: [4]Input={.NR_1,.NR_2,.NR_3,.NR_4};
+    for key,lane: keys {
+        if chart_key(p,key) { chart_cell(p,int_text(p.chart_cursor)+":"+int_text(lane)); }
+    }
+}

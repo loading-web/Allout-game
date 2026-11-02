@@ -1,0 +1,17 @@
+style_hints: [18]string : {"Complete a song", "Reach a 10 combo", "Reach a 16 combo", "Reach a 25 combo", "Reach a 50 combo", "Reach a 100 combo", "Reach a 200 combo", "Complete a song without misses", "Reach 25 combo with 98% accuracy", "Complete a rooftop song", "Complete a theater song", "Complete an orbital song", "Win against a bot", "Beat the Perfect bot", "Edit a chart", "Add a stage object", "Customize your character", "Publish a mod"};
+style_color :: proc(i: int) -> int { return ([18]int){5,9,6,7,4,15,19,2,17,3,18,12,16,19,14,13,10,8}[clamp(i,0,17)]; }
+palette_hex :: proc(i: int) -> string {
+    c:=color_replace_get_color(clamp(i,0,Color_Replace_Color.COUNT.(int)-1).(Color_Replace_Color));
+    return "rgb("+int_text((c.x*255).(int))+","+int_text((c.y*255).(int))+","+int_text((c.z*255).(int))+")";
+}
+bind_styles :: proc(p: Player) {
+    UI.uidoc_begin_list("styles-list");
+    for i: 0..<18 {
+        unlocked:=(p.achievements & (1<<i))!=0;
+        UI.uidoc_list_item(int_text(i)); UI.uidoc_list_bind_text("name",achievement_names[i]);
+        UI.uidoc_list_bind_text("hint",style_hints[i]);
+        UI.uidoc_list_bind_text("state",!unlocked ? "LOCKED" : (p.equipped_style==i ? "EQUIPPED" : "EQUIP COLOR"));
+        UI.uidoc_list_bind_text("color",unlocked ? palette_hex(style_color(i)) : "#61708d");
+    }
+    UI.uidoc_end_list();
+}

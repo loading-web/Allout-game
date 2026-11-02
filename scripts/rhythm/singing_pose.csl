@@ -1,0 +1,8 @@
+Singing_Pose :: class : Effect_Base {
+    direction: int;
+    missed: bool;
+    effect_end :: method(interrupt: bool) {
+        c := entity.get_component(Rhythm_Performer);
+        if #alive(c) && #alive(c.visual) { c.visual.set_local_rotation(0); c.visual.set_local_position({0,0}); }
+    }
+}

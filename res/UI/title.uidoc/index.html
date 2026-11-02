@@ -1,0 +1,12 @@
+<div class="black"></div>
+<div class="scene" data-style-transform-scale="camera-scale">
+<img class="wall" src="UI/graffiti_wall.png" data-style-opacity="wall-alpha">
+<div class="shade" data-style-opacity="wall-alpha"></div>
+<main class="safe">
+<div class="credit" data-text-reserve="MADE WITH THE ALL OUT COMMUNITY" data-if="intro" data-style-opacity="credit-alpha">{{credit}}</div>
+<div class="brand" data-style-opacity="logo-alpha" data-style-transform-scale="logo-scale"><img class="logo" src="UI/graffiti_logo_cutout.png"></div>
+<div class="prompt" data-if="ready">{{prompt}}</div>
+</main>
+</div>
+<button id="title-begin" class="begin" data-if="ready" data-on-click="event:title-begin"></button>
+<div class="fade" data-style-opacity="fade"></div>

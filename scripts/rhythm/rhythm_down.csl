@@ -1,0 +1,4 @@
+Rhythm_Down :: class : Ability_Base {
+    on_init :: method() { name="Down"; icon=get_asset(Texture_Asset,arrow_paths[1]); keybind_override=rhythm_keys[1]; draw_but_dont_use_keybind=true; }
+    on_update :: method(params: ref Ability_Update_Params) { rhythm_input(player,ref params,1); }
+}

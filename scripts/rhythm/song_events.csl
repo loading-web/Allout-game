@@ -1,0 +1,71 @@
+trigger_song_events :: proc(p: Player) {
+    if !p.using_custom { return; }
+    for ev: p.playing_mod.events {
+        timing:=ev.beat*60/p.bpm;
+        if p.previous_song_time<timing && p.song_time>=timing {
+            switch ev.kind {
+                case 2,3,4: spawn_weather(p,ev);
+                case 7: {
+                    p.playing_mod.rival_color=(p.playing_mod.rival_color+7)%Color_Replace_Color.COUNT.(int);
+                    rhythm_sound(p,"sfx/unlock.wav",0.3);
+                }
+                case 9: {
+                    p.stage=(p.stage+1)%3;
+                    p.camera.position={p.stage.(float)*42,0};
+                }
+                case 10: {
+                    e:=Scene.create_entity();
+                    e.add_component(Rhythm_Performer,on_before_start=proc "init_guest_performer" (c: Rhythm_Performer) { c.owner_id=p.get_user_id(); c.role=3; });
+                }
+                case 11: { p.bot_direction=(p.bot_direction+1)%4; p.bot_pose_time=get_time(); }
+                case 6: rhythm_sound(p,"sfx/go.wav",0.3);
+            }
+        }
+    }
+}
+spawn_weather :: proc(p: Player,ev: Song_Event) {
+    if p.reduced_motion { return; }
+    e:=Scene.create_entity(); e.set_world_position({p.stage.(float)*42,ev.kind==4 ? -3.0 : 6.0});
+    v:=Scene.create_entity(); v.set_parent(e,false);
+    fx:=v.add_component(Particle_System_Component); fx.layer=1;
+    desc:=Particle_System_Desc.preset_rain();
+    if ev.kind==3 { desc=Particle_System_Desc.preset_snow(); }
+    if ev.kind==4 { desc=Particle_System_Desc.preset_embers(); }
+    desc.emission=Particle_Emission.burst((30*ev.strength).(int)+10); desc.prewarm=false;
+    desc.spawn_rect_size={20,1}; desc.lifetime=Particle_System_Desc.range_float(ev.duration*0.5,ev.duration);
+    fx.play(desc);
+    e.add_component(Rhythm_Prop,on_before_start=proc "init_weather_prop" (c: Rhythm_Prop) { c.owner_id=p.get_user_id(); c.visual=v; c.burst=true; c.expires=get_time()+ev.duration+0.1; });
+}
+draw_song_overlays :: proc(p: Player) {
+    if !p.is_local_or_server() { return; }
+    if !p.using_custom || p.reduced_motion { return; }
+    safe:=UI.get_safe_screen_rect();
+    for ev: p.playing_mod.events {
+        age:=p.song_time-ev.beat*60/p.bpm;
+        if age<0 || age>ev.duration { continue; }
+        fade:=1-age/ev.duration;
+        switch ev.kind {
+            case 0,6: {
+                alpha:=min(0.13,ev.strength*fade*0.13);
+                if ev.kind==6 { alpha*=max(0,sin(age*18)); }
+                UI.quad(safe,core_globals.white_sprite,{0.4,0.85,1,alpha});
+            }
+            case 5: {
+                for i: 0..<5 {
+                    y:=safe.min.y+safe.height()*(i.(float)+0.5)/5;
+                    UI.quad(Rect{{safe.min.x,y},{safe.max.x,y+4}},core_globals.white_sprite,{0.9,0.3,0.9,fade*0.12});
+                }
+            }
+        }
+    }
+}
+event_camera_zoom :: proc(p: Player) -> float {
+    if !p.using_custom || p.reduced_motion || p.screen!=2 { return 0; }
+    zoom:=0.0;
+    for ev: p.playing_mod.events {
+        age:=p.song_time-ev.beat*60/p.bpm;
+        if age<0 || age>ev.duration { continue; }
+        if ev.kind==1 || ev.kind==12 { zoom=max(zoom,ev.strength*0.25*sin(PI*age/ev.duration)); }
+    }
+    return zoom;
+}

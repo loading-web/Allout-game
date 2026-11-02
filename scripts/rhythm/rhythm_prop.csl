@@ -1,0 +1,59 @@
+Rhythm_Prop :: class : Component {
+    owner_id: string;
+    visual: Entity;
+    spec: Stage_Object;
+    burst: bool;
+    expires: float;
+    last_position: v2;
+    position_initialized: bool;
+    ao_start :: method() {
+        if !burst {
+            visual = Scene.create_entity(); visual.set_parent(entity,false);
+            sprite := visual.add_component(Sprite_Renderer);
+            sprite.set_texture(get_asset(Texture_Asset,prop_path(spec.kind)));
+            sprite.layer = spec.layer;
+            visual.set_local_scale({spec.size,spec.size}); visual.set_local_rotation(spec.rotation);
+        }
+        refresh_visibility();
+    }
+    ao_update :: method(dt: float) {
+        if burst && get_time() > expires { entity.destroy(); return; }
+        if burst { return; }
+        p := find_player(owner_id); if p == null { return; }
+        center := p.screen == 5 ? p.work.stage.(float)*42.0 : p.stage.(float)*42.0;
+        parallax:=spec.layer<0 ? (p.camera.position.x-center)*(spec.layer.(float)*-0.1) : 0.0;
+        position:=v2{center+spec.x+parallax,spec.y};
+        if !position_initialized || position!=last_position {
+            entity.set_world_position(position); last_position=position; position_initialized=true;
+        }
+    }
+    refresh_visibility :: method() {
+        if Game.is_server() { return; }
+        if !#alive(visual) { return; }
+        if p,ok := Game.get_local_player(); ok { visual.set_local_enabled(p.get_user_id() == owner_id); }
+    }
+    ao_on_state_sync :: method() { refresh_visibility(); }
+}
+prop_path :: proc(k: int) -> string {
+    return ([5]string){"Sci-Fi_Twin-Driver_Concert_Speaker_Tower_b5ea09.png","Cyan_Wall_Light_Bar_2e017a.png","speaker_stack_bound_aa3602.png","light_circle_a5135e.png","neon_cyberpunk_city_skyline_strip_e5e3bf.png"}[clamp(k,0,4)];
+}
+rebuild_stage_props :: proc(p: Player) {
+    for c: component_iterator(Rhythm_Prop) { if c.owner_id == p.get_user_id() && !c.burst { c.entity.destroy(); } }
+    m: Song_Mod;
+    if p.screen == 5 { m=p.work; } else if p.using_custom && p.screen == 2 { m=p.playing_mod; }
+    if m == null { return; }
+    for spec: m.objects {
+        e:=Scene.create_entity();
+        e.add_component(Rhythm_Prop,on_before_start=proc "init_rhythm_prop" (c: Rhythm_Prop) { c.owner_id=p.get_user_id(); c.spec=spec; });
+    }
+}
+burst_for_player :: proc(p: Player, count: int, color: v4) {
+    e:=Scene.create_entity(); e.set_world_position({p.stage.(float)*42.0+5.2,-1.6});
+    visual:=Scene.create_entity(); visual.set_parent(e,false);
+    particles:=visual.add_component(Particle_System_Component);
+    desc:=Particle_System_Desc.preset_confetti(); desc.emission=Particle_Emission.burst(count); desc.prewarm=false;
+    desc.lifetime=Particle_System_Desc.range_float(0.3,0.65); desc.speed=Particle_System_Desc.range_float(1,3);
+    desc.color_over_lifetime=Particle_System_Desc.over_lifetime_v4(color,{color.x,color.y,color.z,0});
+    particles.play(desc);
+    e.add_component(Rhythm_Prop,on_before_start=proc "init_rhythm_burst" (c: Rhythm_Prop) { c.owner_id=p.get_user_id(); c.visual=visual; c.burst=true; c.expires=get_time()+1; });
+}

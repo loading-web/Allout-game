@@ -1,0 +1,21 @@
+// Stateless chart sampling also reconstructs the correct pose after state sync,
+// seeks and late joins. No accumulating animation timer can drift from music.
+chart_singing_pose :: proc(p: Player, side: int, time: float) -> (int,float,bool) {
+    ensure_note_index(p);
+    index:=note_lower_bound(p,time);
+    if index<p.note_timeline.count && p.note_timeline[index].time==time { index+=1; }
+    for i: 0..<index #reverse {
+        n:=p.note_timeline[i];
+        if n.side!=side { continue; }
+        duration:=n.hold>0 ? n.hold : 0.09;
+        end:=n.time+duration;
+        // Latest onset wins when a chart contains simultaneous directions.
+        // A bounded release blends to idle without extending the sung note.
+        release:=min(0.12,60/p.bpm*0.25);
+        if time<end { return n.lane,1,true; }
+        amount:=clamp(1-(time-end)/release,0,1);
+        amount=amount*amount*(3-2*amount);
+        return n.lane,amount,false;
+    }
+    return 0,0,false;
+}

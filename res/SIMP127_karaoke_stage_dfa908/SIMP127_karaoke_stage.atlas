@@ -1,0 +1,26 @@
+dfa90856eff645fa.png
+	size: 1028, 1028
+	filter: Linear, Linear
+images/SIMP127/EGuitar_Full
+	bounds: 570, 866, 270, 153
+	offsets: 1, 1, 272, 155
+images/SIMP127/StandUp_Microphone
+	bounds: 570, 787, 73, 132
+	offsets: 1, 1, 75, 134
+	rotate: 90
+images/SIMP127/roar_loud_red/sound wave 3
+	bounds: 6, 259, 493, 502
+	offsets: 4, 3, 501, 508
+images/SIMP127/roar_loud_red/sound wave 3.2
+	bounds: 505, 273, 490, 488
+	offsets: 4, 3, 498, 495
+images/amp
+	bounds: 846, 774, 116, 140
+	offsets: 1, 1, 118, 141
+	rotate: 90
+images/stage
+	bounds: 6, 767, 558, 252
+	offsets: 3, 3, 564, 256
+images/support_table
+	bounds: 846, 896, 173, 123
+	offsets: 1, 1, 175, 125

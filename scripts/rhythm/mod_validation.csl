@@ -1,0 +1,59 @@
+// Sanitize saved work, imported publications and play snapshots.
+sanitize_mod :: proc(m: Song_Mod) {
+    if m==null { return; }
+    m.name=limited_text(m.name,40); if string_trim(m.name).count==0 { m.name="Untitled Encore"; }
+    m.artist=limited_text(m.artist,40); m.character_name=limited_text(m.character_name,32);
+    m.bpm=clamp(m.bpm,60,200); m.length_beats=clamp(m.length_beats,16,512);
+    m.audio=clamp(m.audio,0,11); m.stage=clamp(m.stage,0,3); m.difficulty=clamp(m.difficulty,0,2);
+    m.player_color=clamp(m.player_color,0,Color_Replace_Color.COUNT.(int)-1);
+    m.rival_color=clamp(m.rival_color,0,Color_Replace_Color.COUNT.(int)-1);
+    m.voice_type=clamp(m.voice_type,0,6); m.rival_voice_type=clamp(m.rival_voice_type,0,6);
+    m.voice_tone=clamp(m.voice_tone,0,2); m.rival_voice_tone=clamp(m.rival_voice_tone,0,2);
+    m.voice_style=clamp(m.voice_style,0,2); m.rival_voice_style=clamp(m.rival_voice_style,0,2);
+    m.voice_effect=clamp(m.voice_effect,0,2); m.rival_voice_effect=clamp(m.rival_voice_effect,0,2);
+    m.rival_pitch=clamp(m.rival_pitch,0.65,1.6);
+    m.pitch=clamp(m.pitch,0.65,1.6); m.animation_speed=clamp(m.animation_speed,0.5,1.5);
+    m.mic_size=clamp(m.mic_size,0.1,0.4); m.mic_style=clamp(m.mic_style,0,2);
+    m.mic_x=clamp(m.mic_x,-0.15,0.15); m.mic_y=clamp(m.mic_y,-0.1,0.2);
+    m.note_skin=clamp(m.note_skin,0,2); m.theme=clamp(m.theme,0,2);
+    m.glow=clamp(m.glow,0,1.5); m.hud_x=clamp(m.hud_x,-80,80); m.health_y=clamp(m.health_y,0,100);
+    m.dialogue=limited_text(m.dialogue,160);
+    for i: 0..<5 { m.judgement_names[i]=limited_text(m.judgement_names[i],16); if string_trim(m.judgement_names[i]).count==0 { m.judgement_names[i]=rating_names[i]; } }
+    while m.notes.count>2048 { m.notes.pop(); }
+    normalize_chart(m);
+    while m.events.count>128 { m.events.pop(); }
+    for i: 0..<m.events.count {
+        m.events[i].kind=clamp(m.events[i].kind,0,12);
+        m.events[i].beat=clamp(m.events[i].beat,0,m.length_beats.(float)-0.25);
+        m.events[i].duration=clamp(m.events[i].duration,0.5,8); m.events[i].strength=clamp(m.events[i].strength,0.1,1);
+        m.events[i].text=limited_text(m.events[i].text,160);
+    }
+    while m.objects.count>32 { m.objects.pop(); }
+    for i: 0..<m.objects.count {
+        m.objects[i].kind=clamp(m.objects[i].kind,0,4); m.objects[i].layer=clamp(m.objects[i].layer,-3,1);
+        m.objects[i].size=clamp(m.objects[i].size,0.1,3);
+        m.objects[i].x=clamp(m.objects[i].x,-10,10); m.objects[i].y=clamp(m.objects[i].y,-4,5);
+    }
+}
+normalize_chart :: proc(m: Song_Mod) {
+    for i: 0..<m.notes.count #reverse {
+        n:=m.notes[i];
+        if n.lane<0 || n.lane>3 || n.side<0 || n.side>1 || n.beat<0 || n.beat>=m.length_beats.(float) { m.notes.ordered_remove_by_index(i); continue; }
+        duplicate:=false;
+        for j: 0..<i { other:=m.notes[j]; if other.lane==n.lane && other.side==n.side && abs(other.beat-n.beat)<0.01 { duplicate=true; break; } }
+        if duplicate { m.notes.ordered_remove_by_index(i); continue; }
+        tail:=m.length_beats.(float)-n.beat;
+        for other: m.notes { if other.lane==n.lane && other.side==n.side && other.beat>n.beat+0.01 { tail=min(tail,max(0,other.beat-n.beat-0.125)); } }
+        m.notes[i].hold=clamp(n.hold,0,min(4,tail));
+    }
+}
+safe_share_code :: proc(code: string) -> bool {
+    if code.count==0 || code.count>100 { return false; }
+    allowed:="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+    for i: 0..<code.count {
+        ch:=string_substring(code,i,1); valid:=false;
+        for j: 0..<allowed.count { if ch==string_substring(allowed,j,1) { valid=true; break; } }
+        if !valid { return false; }
+    }
+    return true;
+}

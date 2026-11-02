@@ -1,0 +1,140 @@
+// Every keyboard input uses the engine prediction-safe Keybind API.
+control_inputs: [120]Input : {.SPACE,.APOSTROPHE,.COMMA,.MINUS,.PERIOD,.SLASH,.NR_0,.NR_1,.NR_2,.NR_3,.NR_4,.NR_5,.NR_6,.NR_7,.NR_8,.NR_9,.SEMICOLON,.EQUAL,.A,.B,.C,.D,.E,.F,.G,.H,.I,.J,.K,.L,.M,.N,.O,.P,.Q,.R,.S,.T,.U,.V,.W,.X,.Y,.Z,.LEFT_BRACKET,.BACKSLASH,.RIGHT_BRACKET,.GRAVE_ACCENT,.WORLD_1,.WORLD_2,.ESCAPE,.ENTER,.TAB,.BACKSPACE,.INSERT,.DELETE,.RIGHT,.LEFT,.DOWN,.UP,.PAGE_UP,.PAGE_DOWN,.HOME,.END,.CAPS_LOCK,.SCROLL_LOCK,.NUM_LOCK,.PRINT_SCREEN,.PAUSE,.F1,.F2,.F3,.F4,.F5,.F6,.F7,.F8,.F9,.F10,.F11,.F12,.F13,.F14,.F15,.F16,.F17,.F18,.F19,.F20,.F21,.F22,.F23,.F24,.F25,.KP_0,.KP_1,.KP_2,.KP_3,.KP_4,.KP_5,.KP_6,.KP_7,.KP_8,.KP_9,.KP_DECIMAL,.KP_DIVIDE,.KP_MULTIPLY,.KP_SUBTRACT,.KP_ADD,.KP_ENTER,.KP_EQUAL,.LEFT_SHIFT,.LEFT_CONTROL,.LEFT_ALT,.LEFT_SUPER,.RIGHT_SHIFT,.RIGHT_CONTROL,.RIGHT_ALT,.RIGHT_SUPER,.MENU};
+control_labels: [120]string : {"SPACE","APOSTROPHE","COMMA","MINUS","PERIOD","SLASH","0","1","2","3","4","5","6","7","8","9","SEMICOLON","EQUAL","A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","LEFT BRACKET","BACKSLASH","RIGHT BRACKET","GRAVE ACCENT","WORLD 1","WORLD 2","ESCAPE","ENTER","TAB","BACKSPACE","INSERT","DELETE","RIGHT","LEFT","DOWN","UP","PAGE UP","PAGE DOWN","HOME","END","CAPS LOCK","SCROLL LOCK","NUM LOCK","PRINT SCREEN","PAUSE","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","F13","F14","F15","F16","F17","F18","F19","F20","F21","F22","F23","F24","F25","NUMPAD 0","NUMPAD 1","NUMPAD 2","NUMPAD 3","NUMPAD 4","NUMPAD 5","NUMPAD 6","NUMPAD 7","NUMPAD 8","NUMPAD 9","NUMPAD DECIMAL","NUMPAD DIVIDE","NUMPAD MULTIPLY","NUMPAD SUBTRACT","NUMPAD ADD","NUMPAD ENTER","NUMPAD EQUAL","LEFT SHIFT","LEFT CONTROL","LEFT ALT","LEFT SUPER","RIGHT SHIFT","RIGHT CONTROL","RIGHT ALT","RIGHT SUPER","MENU"};
+control_keys: [120]Keybind;
+control_actions: [7]string : {"Left","Down","Up","Right","Pause","Accept","Back"};
+
+control_index :: proc(key: Input) -> int {
+    for k,i: control_inputs { if k==key { return i; } } return 0;
+}
+register_controls :: proc() {
+    for key,i: control_inputs { control_keys[i]=Keybinds.register("Encore key / "+control_labels[i],key); }
+}
+load_controls :: proc(p: Player) {
+    defaults: [7]Input={.A,.S,.W,.D,.P,.ENTER,.BACKSPACE};
+    for key,i: defaults { p.controls[i]=clamp(Save.get_int(p,`encore_control_v1_{i}`,control_index(key)),0,control_inputs.count-1); }
+    p.control_preset=clamp(Save.get_int(p,"encore_control_preset",0),0,3);
+    for i: 0..<4 { p.custom_controls[i]=clamp(Save.get_int(p,`encore_custom_control_{i}`,p.controls[i]),0,control_inputs.count-1); }
+    p.touch_size=clamp(Save.get_float(p,"encore_touch_size",1),0.7,1.3);
+    p.touch_position=clamp(Save.get_int(p,"encore_touch_position",0),0,2);
+    p.touch_alpha=clamp(Save.get_float(p,"encore_touch_alpha",1),0.25,1);
+    p.touch_sensitivity=clamp(Save.get_float(p,"encore_touch_sensitivity",1),0.5,1.5);
+}
+save_controls :: proc(p: Player) {
+    for key,i: p.controls { Save.set_int(p,`encore_control_v1_{i}`,key); }
+    Save.set_int(p,"encore_control_preset",p.control_preset);
+    for key,i: p.custom_controls { Save.set_int(p,`encore_custom_control_{i}`,key); }
+}
+control_down :: proc(p: Player, action: int) -> bool { return Keybinds.get_keybind_down(p,control_keys[p.controls[action]]); }
+apply_control_preset :: proc(p: Player, preset: int) {
+    p.capture_control=-1; p.control_preset=clamp(preset,0,3);
+    layouts: [3][4]Input={{.A,.S,.W,.D},{.D,.F,.J,.K},{.LEFT,.DOWN,.UP,.RIGHT}};
+    for i: 0..<4 { p.controls[i]=preset==3 ? p.custom_controls[i] : control_index(layouts[preset][i]); }
+    // Keep all seven actions reachable if a custom menu key overlaps a preset.
+    for i: 4..<7 {
+        duplicate:=false;
+        for j: 0..<i { if p.controls[i]==p.controls[j] { duplicate=true; } }
+        if duplicate {
+            for candidate: control_inputs {
+                index:=control_index(candidate); occupied:=false;
+                for j: 0..<7 { if j!=i && p.controls[j]==index { occupied=true; } }
+                if !occupied && candidate!=.ESCAPE { p.controls[i]=index; break; }
+            }
+        }
+    }
+    save_controls(p);
+}
+bind_controls :: proc(p: Player) {
+    keyboard:=p.options_category==1 && p.device_kind==.PC;
+    UI.uidoc_bind_bool("keyboard-controls",keyboard);
+    UI.uidoc_bind_bool("capturing",keyboard && p.capture_control>=0);
+    UI.uidoc_bind_text("capture-action",p.capture_control>=0 ? "Change "+control_actions[p.capture_control]+" Key" : "");
+    UI.uidoc_bind_text("control-status",p.capture_control>=0 ? "PRESS A NEW KEY" : "Saved automatically / duplicate keys swap");
+    UI.uidoc_begin_list("control-presets");
+    if keyboard { for i: 0..<4 {
+        UI.uidoc_list_item(int_text(i));
+        UI.uidoc_list_bind_text("name",([4]string){"1 / W A S D","2 / D F J K","3 / Arrow Keys","4 / Custom"}[i]);
+        UI.uidoc_list_bind_text("color",p.control_preset==i ? "#ceff38" : "#ffffff");
+    } } UI.uidoc_end_list();
+    UI.uidoc_begin_list("control-bindings");
+    if keyboard { for i: 0..<7 {
+        UI.uidoc_list_item(int_text(i));
+        UI.uidoc_list_bind_text("label","Change "+control_actions[i]+" Key");
+        UI.uidoc_list_bind_text("value",to_upper(control_actions[i])+" = "+Keybinds.get_keybind_string(p,control_keys[p.controls[i]]));
+        UI.uidoc_list_bind_text("color",p.capture_control==i ? "#ceff38" : "#ffffff");
+    } } UI.uidoc_end_list();
+}
+update_control_input :: proc(p: Player) {
+    if p.screen>=16 && p.screen<=18 {
+        // The engine reserves Enter to open chat before registered keybinds.
+        // Its synchronized rising edge is also an explicit title confirmation;
+        // opening chat via its icon is a screen click, likewise allowed here.
+        chat_open:=p.is_chat_open();
+        if p.screen==17 && (Keybinds.get_keybind_down(p,control_keys[control_index(.ENTER)]) || (chat_open && !p.title_chat_was_open)) { begin_title_menu(p); }
+        p.title_chat_was_open=chat_open;
+        return;
+    }
+    if p.device_kind!=.PC || p.is_chat_open() { return; }
+    if p.capture_control>=0 {
+        if p.screen!=4 || p.options_category!=1 { p.capture_control=-1; return; }
+        for key,i: control_keys { if Keybinds.get_keybind_down(p,key) {
+            action:=p.capture_control; old:=p.controls[action];
+            for j: 0..<7 { if j!=action && p.controls[j]==i { p.controls[j]=old; } }
+            p.controls[action]=i; p.capture_control=-1; p.control_preset=3;
+            for j: 0..<4 { p.custom_controls[j]=p.controls[j]; }
+            save_controls(p); rhythm_sound(p,"sfx/click.wav",0.4); return;
+        } } return;
+    }
+    if p.screen==5 {
+        if p.editor_tab==1 && !p.preview_only { update_chart_keyboard(p); }
+        return;
+    }
+    if control_down(p,4) && p.screen==2 { pause_encore(p); return; }
+    if control_down(p,6) {
+        if p.screen==2 { pause_encore(p); }
+        else if p.screen==15 { leave_song(p); }
+        else if p.screen==13 { stop_calibration(p); p.screen=4; }
+        else if p.screen!=0 { on_encore_event(.{handler="event:back"},p); }
+        return;
+    }
+    if control_down(p,5) {
+        if p.screen==0 { on_encore_event(.{handler="event:play"},p); }
+        else if p.screen==1 { on_encore_event(.{handler="event:start"},p); }
+        else if p.screen==10 { start_week(p,p.story_week); }
+        else if p.screen==3 || p.screen==15 { on_encore_event(.{handler="event:retry"},p); }
+        else if p.screen==8 && p.challenger_id.count>0 { on_encore_event(.{handler="event:accept"},p); }
+        else if p.screen==11 { p.screen=12; }
+    }
+}
+pause_encore :: proc(p: Player) {
+    // A live rival cannot be frozen by another player's menu.
+    if p.mode==2 || p.mode==3 { return; }
+    stop_character_voices(p);
+    p.screen=15; SFX.stop(p.audio_id);
+    for i: 0..<4 { p.lane_held[i]=false; }
+}
+draw_rhythm_controls :: proc(p: Player) {
+    mobile:=p.device_kind!=.PC;
+    for a: p.abilities {
+        if a.type==Rhythm_Left { a.keybind_override=control_keys[p.controls[0]]; }
+        if a.type==Rhythm_Down { a.keybind_override=control_keys[p.controls[1]]; }
+        if a.type==Rhythm_Up { a.keybind_override=control_keys[p.controls[2]]; }
+        if a.type==Rhythm_Right { a.keybind_override=control_keys[p.controls[3]]; }
+    }
+    UI.push_scale_factor(UI.get_current_scale_factor()*(mobile ? p.touch_size : 1)); defer UI.pop_scale_factor();
+    UI.push_color_multiplier({1,1,1,mobile ? p.touch_alpha : 1}); defer UI.pop_color_multiplier();
+    offset:=v2{0,0};
+    if mobile && p.touch_position==1 { offset={-UI.get_safe_screen_rect().width()*0.25,0}; }
+    if mobile && p.touch_position==2 { offset={0,UI.get_safe_screen_rect().height()*0.15}; }
+    UI.push_matrix(Matrix4.translate(offset)); defer UI.pop_matrix();
+    if mobile {
+        // Native slots keep both visuals AND touch hitboxes together. The
+        // top-left slots 2/3 cover the note approach, so use lower/gutter slots.
+        draw_ability_button(p,Rhythm_Left,0); draw_ability_button(p,Rhythm_Down,1);
+        draw_ability_button(p,Rhythm_Up,4); draw_ability_button(p,Rhythm_Right,5);
+    } else {
+        draw_ability_button(p,Rhythm_Left,0); draw_ability_button(p,Rhythm_Down,1);
+        draw_ability_button(p,Rhythm_Up,2); draw_ability_button(p,Rhythm_Right,3);
+    }
+}
+

@@ -1,0 +1,48 @@
+// 16 = timed intro, 17 = indefinite title, 18 = confirmed transition.
+intro_messages: [4]string : {"FRESH PAINT. LOUD BEATS.","YOUR BLOCK. YOUR BEAT.","TURN IT UP. MAKE YOUR MARK.","NO QUIET NIGHTS."};
+update_title_sequence :: proc(p: Player) {
+    if p.screen==16 && get_time()-p.intro_started_at>=12 { p.screen=17; }
+    if p.screen==18 && get_time()-p.title_confirmed_at>=0.85 {
+        p.screen=0;
+        intro_lesson.start(p);
+    }
+}
+begin_title_menu :: proc(p: Player) {
+    if p.screen!=17 { return; }
+    p.title_confirmed_at=get_time(); p.screen=18;
+    rhythm_sound(p,"sfx/click.wav",0.65);
+}
+on_title_event :: proc(event: UIDoc_Event, userdata: Object) {
+    p:=userdata.(Player);
+    if p==null { return; }
+    if event.handler=="event:title-begin" { begin_title_menu(p); }
+}
+draw_title_sequence :: proc(p: Player) {
+    if !p.is_local_or_server() { return; }
+    t:=get_time()-p.intro_started_at;
+    intro:=p.screen==16;
+    confirmed:=p.screen==18;
+    age:=confirmed ? get_time()-p.title_confirmed_at : 0;
+    copy:=""; alpha:=0.0;
+    if t>=1 && t<4 { copy="ALL OUT PRESENTS"; alpha=min(clamp((t-1)*3,0,1),clamp((3.5-t)*2,0,1)); }
+    if t>=4 && t<7 { copy="MADE WITH THE ALL OUT COMMUNITY"; alpha=min(clamp((t-4)*3,0,1),clamp((6.5-t)*2,0,1)); }
+    if t>=7 && t<8 { copy=intro_messages[p.intro_message]; alpha=min(clamp((t-7)*5,0,1),clamp((8-t)*5,0,1)); }
+    reveal:=intro ? clamp((t-8)*2,0,1) : 1.0;
+    wall:=intro ? clamp((t-10)/2,0,1) : 1.0;
+    pulse:=p.reduced_motion ? 0.0 : (confirmed ? 0.065*sin(PI*clamp(age/0.55,0,1)) : 0.012*sin(get_time()*3));
+    UI.uidoc_clear_bindings();
+    UI.uidoc_bind_bool("intro",intro);
+    UI.uidoc_bind_bool("ready",p.screen==17);
+    UI.uidoc_bind_text("credit",copy);
+    UI.uidoc_bind_float("credit-alpha",alpha);
+    UI.uidoc_bind_float("logo-alpha",reveal);
+    UI.uidoc_bind_float("wall-alpha",wall);
+    UI.uidoc_bind_float("logo-scale",1+pulse);
+    UI.uidoc_bind_float("camera-scale",1+(confirmed && !p.reduced_motion ? 0.035*clamp(age/0.85,0,1) : 0));
+    UI.uidoc_bind_float("fade",confirmed ? clamp((age-0.3)/0.55,0,1) : 0);
+    prompt:="PRESS ENTER TO BEGIN";
+    if p.device_kind==.PHONE { prompt="TAP THE SCREEN TO BEGIN"; }
+    if p.device_kind==.TABLET { prompt="TAP TO BEGIN"; }
+    UI.uidoc_bind_text("prompt",prompt);
+    UI.uidoc(get_asset(UIDoc_Asset,"UI/title.uidoc"),true,p,on_title_event);
+}

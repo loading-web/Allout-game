@@ -1,0 +1,164 @@
+draw_creator :: proc(p: Player) {
+    if !p.is_local_or_server() { return; }
+    sync_chart_history(p);
+    doc:=get_asset(UIDoc_Asset,"UI/creator.uidoc"); m:=p.work;
+    UI.uidoc_clear_bindings();
+    UI.uidoc_bind_float("tag-pulse",p.reduced_motion ? 1 : 1+0.015*pow(1-((get_time()-p.menu_audio_start)*2)%1,4));
+    UI.uidoc_bind_float("enter-alpha",clamp((get_time()-p.screen_changed)*7,0.2,1));
+    UI.uidoc_bind_bool("full-editor",!p.preview_only);
+    UI.uidoc_bind_bool("preview-only",p.preview_only);
+    UI.uidoc_bind_text("mod-name",m.name); UI.uidoc_bind_text("status",p.pending_publication.count>0 ? "Publishing…" : (p.unpublish_code.count>0 ? "Unpublishing…" : p.editor_status));
+    UI.uidoc_bind_text("tab-title",editor_tabs[p.editor_tab]);
+    UI.uidoc_bind_bool("song-tab",p.editor_tab==0); UI.uidoc_bind_bool("chart-tab",p.editor_tab==1);
+    UI.uidoc_bind_bool("character-tab",p.editor_tab==2); UI.uidoc_bind_bool("stage-tab",p.editor_tab==3);
+    UI.uidoc_bind_bool("events-tab",p.editor_tab==4 || p.editor_tab==6);
+    UI.uidoc_bind_bool("ui-tab",p.editor_tab==5); UI.uidoc_bind_bool("cutscene-tab",p.editor_tab==7);
+    UI.uidoc_bind_bool("manager-tab",p.editor_tab==8); UI.uidoc_bind_bool("publish-tab",p.editor_tab==9);
+    UI.uidoc_bind_text("preview",p.preview_playing ? "STOP PREVIEW" : "PREVIEW AUDIO");
+    UI.uidoc_bind_text("note-count",`{m.notes.count} notes · {m.events.count} events`);
+    UI.uidoc_bind_text("song-name",m.name); UI.uidoc_bind_text("artist",m.artist);
+    UI.uidoc_bind_text("character-name",m.character_name); UI.uidoc_bind_text("dialogue",m.dialogue);
+    UI.uidoc_bind_text("import-code",p.import_code); UI.uidoc_bind_text("share-code",p.export_code==m.id ? p.export_code : "");
+    for i: 0..<5 { UI.uidoc_bind_text(`rating{i}`,m.judgement_names[i]); }
+    event_text:="";
+    if p.selected_event>=0 && p.selected_event<m.events.count { event_text=m.events[p.selected_event].text; }
+    UI.uidoc_bind_text("event-text",event_text);
+    UI.uidoc_begin_list("tabs");
+    for title,i: editor_tabs { UI.uidoc_list_item(int_text(i)); UI.uidoc_list_bind_text("name",title); UI.uidoc_list_bind_text("color",p.editor_tab==i ? "#7cf2e6" : "#a9bad9"); }
+    UI.uidoc_end_list();
+    UI.uidoc_begin_list("fields");
+    switch p.editor_tab {
+        case 0: {
+            creator_field("bpm","BPM","Audio and animation retime together",int_text(m.bpm.(int)));
+            creator_field("duration","Song length","16–512 beats",`{m.length_beats} beats`);
+            creator_field("difficulty","Difficulty","Freeplay category",difficulty_name(m.difficulty));
+            creator_field("audio","Audio arrangement","12 original instrumental tracks",song_names[m.audio]);
+        }
+        case 2: {
+            creator_field("player-color","Player color","Live character and health icon theme",int_text(m.player_color));
+            creator_field("rival-color","Rival color","Opponent's color theme",int_text(m.rival_color));
+            kind,tone,effect,style,pitch:=voice_settings(p,p.voice_editor_side,true);
+            creator_field("voice-side","Singer","Preview arrows audition this singer",p.voice_editor_side==1 ? "Player" : "Opponent");
+            creator_field("voice-type","Voice type","Distinct vocal instrument",voice_type_names[kind]);
+            creator_field("voice-style","Voice style","Vocal delivery",voice_style_names[style]);
+            creator_field("pitch","Voice pitch","Left < Down < Right < Up",float_text(pitch,decimals=2));
+            creator_field("voice-tone","Voice tone","Vowel resonance",voice_tone_names[tone]);
+            creator_field("voice-effect","Voice effects","Signature filter / bitcrush / grit",voice_effect_names[effect]);
+            creator_field("voice-hold","Hold preview","Audition a sustained vowel","1.5 seconds");
+            creator_field("animation-speed","Animation speed","Subtle idle layer speed",float_text(m.animation_speed,decimals=1));
+            creator_field("mic-style","Microphone style","Gold / tilted / electric",([3]string){"Gold","Tilted","Electric"}[m.mic_style]);
+            creator_field("mic-size","Mic size","Bone-attached grip",float_text(m.mic_size,decimals=2));
+            creator_field("mic-x","Mic position X","Offset from singing hand",float_text(m.mic_x,decimals=2));
+            creator_field("mic-y","Mic position Y","Offset from singing hand",float_text(m.mic_y,decimals=2));
+        }
+        case 3: {
+            creator_field("stage","Stage","Rooftop / theater / orbital / studio",stage_names[m.stage]);
+            if p.selected_prop>=0 && p.selected_prop<m.objects.count {
+                o:=m.objects[p.selected_prop];
+                creator_field("prop-kind","Object","Speaker / neon / speaker stack / glow / skyline",([5]string){"Speaker","Neon bar","Stack","Glow","Skyline"}[o.kind]);
+                creator_field("prop-x","Position X","World units",float_text(o.x,decimals=2));
+                creator_field("prop-y","Position Y","World units",float_text(o.y,decimals=2));
+                creator_field("prop-size","Scale","Uniform object size",float_text(o.size,decimals=1));
+                creator_field("prop-rotation","Rotation","Degrees",int_text(o.rotation.(int)));
+                creator_field("prop-layer","Layer","Negative = parallax · 0 = stage · 1 = front",int_text(o.layer));
+            }
+        }
+        case 4,6: {
+            if p.selected_event>=0 && p.selected_event<m.events.count {
+                v:=m.events[p.selected_event];
+                creator_field("event-kind","Event type","Timed visual or story event",event_name(v.kind));
+                creator_field("event-beat","Trigger beat","Half-beat precision",float_text(v.beat,decimals=1));
+                creator_field("event-strength","Intensity","Comfort-safe effect strength",float_text(v.strength,decimals=1));
+                creator_field("event-duration","Duration","Seconds",float_text(v.duration,decimals=1));
+            }
+        }
+        case 5: {
+            creator_field("skin","Note skin","Classic / retro / modern",([3]string){"Classic","Retro","Modern"}[m.note_skin]);
+            creator_field("theme","HUD theme","Neon / retro / modern",([3]string){"Neon","Retro","Modern"}[m.theme]);
+            creator_field("glow","Receptor glow","Visual intensity",float_text(m.glow,decimals=1));
+            creator_field("trails","Note trails","Follow the note head",m.trails ? "On" : "Off");
+            creator_field("particles","Hit particles","Sick and good bursts",m.particles ? "On" : "Off");
+            creator_field("hud-x","Lane offset","Horizontal HUD position",int_text(m.hud_x.(int)));
+            creator_field("health-y","Health position","Bottom offset",int_text(m.health_y.(int)));
+        }
+    }
+    UI.uidoc_end_list();
+    if p.editor_tab==1 { bind_chart(p); }
+    if p.editor_tab==3 {
+        UI.uidoc_begin_list("objects");
+        for o,i: m.objects { UI.uidoc_list_item(int_text(i)); UI.uidoc_list_bind_text("name",`Object {i+1}`); UI.uidoc_list_bind_text("color",p.selected_prop==i ? "#79f8ea" : "#d3def1"); }
+        UI.uidoc_end_list();
+    }
+    if p.editor_tab==4 || p.editor_tab==6 {
+        UI.uidoc_begin_list("events");
+        for v,i: m.events { UI.uidoc_list_item(int_text(i)); UI.uidoc_list_bind_text("name",`{float_text(v.beat,decimals=1)} · {event_name(v.kind)}`); UI.uidoc_list_bind_text("color",p.selected_event==i ? "#79f8ea" : "#d3def1"); }
+        UI.uidoc_end_list();
+    }
+    if p.editor_tab==8 {
+        UI.uidoc_begin_list("mods");
+        for mod: p.custom_library.mods { UI.uidoc_list_item(mod.id); UI.uidoc_list_bind_text("name",mod.name); UI.uidoc_list_bind_text("meta",`{mod.artist} · {mod.notes.count} notes · {mod.bpm.(int)} BPM`); UI.uidoc_list_bind_text("delete-label",p.pending_delete_mod==mod.id ? "CONFIRM DELETE" : "Delete"); }
+        UI.uidoc_end_list();
+    }
+    UI.uidoc(doc,true,p,on_encore_event);
+    if p.screen!=5 { return; }
+    if p.editor_tab==0 {
+        m.name=read_creator_text(p,doc,"song-name",m.name,40);
+        m.artist=read_creator_text(p,doc,"artist",m.artist,40);
+    }
+    if p.editor_tab==2 { m.character_name=read_creator_text(p,doc,"character-name",m.character_name,32); }
+    if p.editor_tab==5 { for i: 0..<5 { m.judgement_names[i]=read_creator_text(p,doc,`rating{i}`,m.judgement_names[i],16); } }
+    if p.editor_tab==7 { m.dialogue=read_creator_text(p,doc,"dialogue",m.dialogue,160); }
+    if p.editor_tab==8 { p.import_code=limited_text(UI.uidoc_text_value(doc,"import-code",p.import_code),128); }
+    if (p.editor_tab==4 || p.editor_tab==6) && p.selected_event>=0 && p.selected_event<m.events.count {
+        m.events[p.selected_event].text=read_creator_text(p,doc,"event-text",m.events[p.selected_event].text,160);
+    }
+}
+read_creator_text :: proc(p: Player,doc: UIDoc_Asset,key: string,previous: string,limit: int) -> string {
+    text:=limited_text(UI.uidoc_text_value(doc,key,previous),limit);
+    if text!=previous { mark_work_dirty(p); }
+    return text;
+}
+limited_text :: proc(value: string,limit: int) -> string { return value.count>limit ? string_substring(value,0,limit) : value; }
+creator_field :: proc(key: string,label: string,detail: string,value: string) {
+    UI.uidoc_list_item(key); UI.uidoc_list_bind_text("label",label); UI.uidoc_list_bind_text("detail",detail); UI.uidoc_list_bind_text("value",value);
+}
+bind_chart :: proc(p: Player) {
+    UI.uidoc_bind_bool("chart-pc",p.device_kind==.PC);
+    UI.uidoc_bind_text("undo-label",`Undo ({p.chart_undo.count})`);
+    UI.uidoc_bind_text("redo-label",`Redo ({p.chart_redo.count})`);
+    UI.uidoc_bind_text("side",p.editor_side==1 ? "Player" : "Opponent");
+    UI.uidoc_bind_text("tool",([4]string){"Place","Select","Delete","Move"}[p.editor_tool]);
+    UI.uidoc_bind_text("hold",([6]string){"Tap","Hold 0.25","Hold 0.5","Hold 1","Hold 2","Hold 4"}[p.editor_hold]);
+    UI.uidoc_bind_text("page",`{float_text(p.editor_page.(float)*chart_span(p),decimals=0)}–{float_text((p.editor_page+1).(float)*chart_span(p),decimals=0)}`);
+    UI.uidoc_bind_float("zoom",p.editor_zoom);
+    UI.uidoc_bind_text("snap",`Snap {float_text(chart_step(p),decimals=2)}`);
+    UI.uidoc_begin_list("rows");
+    // One scan of the chart instead of one scan per cell. Call-local because
+    // editor mutations and selection can arrive during UIDoc callbacks.
+    cells: [64]int;
+    for i: 0..<64 { cells[i]=-1; }
+    start:=p.editor_page.(float)*chart_span(p); step:=chart_step(p);
+    for n,i: p.work.notes {
+        if n.side!=p.editor_side || n.lane<0 || n.lane>3 { continue; }
+        row:=round((n.beat-start)/step).(int);
+        if row<0 || row>=16 || abs(n.beat-(start+row.(float)*step))>=0.01 { continue; }
+        cell:=row*4+n.lane;
+        if cells[cell]<0 { cells[cell]=i; }
+    }
+    for row: 0..<16 {
+        UI.uidoc_list_item(int_text(row));
+        beat:=p.editor_page.(float)*chart_span(p)+row.(float)*chart_step(p);
+        UI.uidoc_list_bind_text("beat",float_text(beat,decimals=2));
+        UI.uidoc_list_bind_text("row-color",row==p.chart_cursor ? "#cfff3b" : (abs(beat-round(beat))<0.01 ? "#ad8bce" : "#382646"));
+        for lane: 0..<4 {
+            target:=cells[row*4+lane];
+            color:=target>=0 ? ([4]string){"#d46fff","#62dfff","#6af593","#ff7595"}[lane] : "#415a7a";
+            label:="";
+            if target>=0 { label=p.work.notes[target].hold>0 ? "HOLD" : ([4]string){"TAP","TAP","TAP","TAP"}[lane]; }
+            if target>=0 && selected_note(p,target) { color="#ffffff"; label="SEL"; }
+            UI.uidoc_list_bind_text(`c{lane}`,color); UI.uidoc_list_bind_text(`n{lane}`,label);
+        }
+    }
+    UI.uidoc_end_list();
+}
+event_name :: proc(kind: int) -> string { return ([13]string){"Screen flash","Camera zoom","Rain","Snow","Fire","Glitch","Lightning","Character swap","Dialogue","Stage change","Guest appearance","Sing pose","Camera pulse"}[clamp(kind,0,12)]; }
