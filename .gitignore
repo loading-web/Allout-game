@@ -147,3 +147,26 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+obj
+Assembly.csproj
+scene_backups
+scene_temp
+.idea
+*.ao
+*.ao.astc
+asset_report.txt
+res/.preprocessed
+res/.upload_cache
+.asset_manifest.txt
+*.psd
+.agents
+.claude
+.codex
+.ao
+.mcp.json
+opencode.json
+.gemini
+.cursor
+AGENTS.md
+CLAUDE.md
+ao_debug.lock
