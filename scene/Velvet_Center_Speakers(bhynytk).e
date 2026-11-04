@@ -5,13 +5,15 @@
   "name": "Velvet_Center_Speakers",
   "local_enabled": true,
   "local_position": {
-    "X": 0,
-    "Y": -1.8471532991492854
+    "Y": -1.8471533060073853
   },
-  "local_rotation": 0,
-  "local_scale": {
-    "X": 1.649999976158142,
-    "Y": 1.649999976158142
+  "local_rotation_3d": {
+    "W": 1
+  },
+  "local_scale_3d": {
+    "X": 1.6499999761581421,
+    "Y": 1.6499999761581421,
+    "Z": 1
   },
   "next_sibling": 1333866880,
   "parent": 1339870251

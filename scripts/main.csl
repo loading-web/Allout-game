@@ -223,7 +223,7 @@ Player :: class : Player_Base {
         add_invisibility_reason("rhythm_avatar");
         add_name_invisibility_reason("rhythm_avatar");
         entity.set_world_position({5.2, -2.6}); entity.mark_teleported();
-        camera.follow_player = false; camera.position = {0, 0}; camera.size = 7;
+        camera.follow_player = false; camera.position = {0, 0, 0}; camera.size = 7;
         spawn_ensemble(this);
         intro_started_at = get_time();
         intro_rng := rng_root_seed();

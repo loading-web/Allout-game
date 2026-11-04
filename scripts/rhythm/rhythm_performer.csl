@@ -5,6 +5,7 @@ Rhythm_Performer :: class : Component {
     role: int;
     visual: Entity;
     rig: Spine_Animator;
+    character: Game_Player_Character;
     last_pose: float = -100;
     last_mic_size: float;
     mic_texture_height: float;
@@ -31,7 +32,10 @@ Rhythm_Performer :: class : Component {
         rig.set_animation(role == 2 ? "Emote/Sit_Down" : "Idle",true,0);
         if role == 2 { rig.depth_offset = 3; }
         hand_base = rig.get_bone_local_position("arm_R_IK");
-        if role<2 {
+        if role == 1 {
+            character = visual.add_component(Game_Player_Character, on_before_start=proc "init_game_player_character" (c: Game_Player_Character) { c.rig = rig; });
+        }
+        if role<2 && !(#alive(character) && character.active) {
             microphone=Scene.create_entity(); microphone.set_parent(visual,false);
             microphone_sprite=microphone.add_component(Sprite_Renderer);
             mic_texture:=get_asset(Texture_Asset,"UI/fnf_microphone.png");
@@ -50,7 +54,7 @@ Rhythm_Performer :: class : Component {
         p := find_player(owner_id); if p == null { return; }
         if p.screen!=last_screen {
             last_screen=p.screen;
-            if role<2 {
+            if role<2 && !(#alive(character) && character.active) {
                 if p.screen==3 { rig.set_animation(p.result=="GAME OVER" ? "Death_No_HP" : "Emote/Dance_Simple",p.result!="GAME OVER",0); }
                 else { rig.set_animation("Idle",true,0); }
             }
@@ -84,7 +88,7 @@ Rhythm_Performer :: class : Component {
         // The signature opponent retains the same appearance across every week.
         if settings==null && role==1 && p.equipped_style>=0 && (p.achievements & (1<<p.equipped_style))!=0 { color=style_color(p.equipped_style); }
         if settings != null && role != 2 { color = role == 1 ? settings.player_color : settings.rival_color; }
-        if color != last_color { last_color = color; rig.set_color_replace_color(clamp(color,0,Color_Replace_Color.COUNT.(int)-1).(Color_Replace_Color)); }
+        if color != last_color && !(#alive(character) && character.active) { last_color = color; rig.set_color_replace_color(clamp(color,0,Color_Replace_Color.COUNT.(int)-1).(Color_Replace_Color)); }
         if role != 2 {
             mic_size := settings != null ? settings.mic_size : 0.25;
             style := settings != null ? settings.mic_style : 0;
@@ -141,6 +145,15 @@ Rhythm_Performer :: class : Component {
         sx := 2.7;
         if role == 2 { sx = 1.85; }
         visual.set_local_scale({sx*(1+bop*0.012),abs(sx)*(1-bop*0.022)});
+        if #alive(character) && character.active {
+            // Atlas art supplies its own pose; keep geometry constant. The parent
+            // entity's beat motion is automatically interpolated at render time.
+            visual.set_local_position({0,0});
+            visual.set_local_rotation(0);
+            visual.set_local_scale({sx,sx});
+            character.pose(direction,singing,last_speed);
+            return;
+        }
         if role != 2 {
             // Move the arm IK target, not the hand relative to its elbow.
             // The old Hand_R offset lifted the fist far above the shoulder.

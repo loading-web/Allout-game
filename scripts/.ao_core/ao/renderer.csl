@@ -1,0 +1,117 @@
+// Arrays upload their elements; fixed arrays and POD values upload their complete bytes.
+Buffer_Desc :: struct(T: typeid) {
+    data: T;
+}
+
+Render_Buffer :: struct {
+    id: u64;
+    is_alive :: method() -> bool #foreign "render_buffer_alive";
+    destroy :: method() #foreign "render_data_destroy";
+}
+
+Image_Format :: enum s32 { RGBA8; RGBA8_SRGB; R8; R32F; RGBA32F; }
+Image_Filter :: enum s32 { NEAREST; LINEAR; }
+Image_Wrap :: enum s32 { CLAMP; REPEAT; MIRROR; }
+Image_Desc :: struct(T: typeid) {
+    pixels: []T;
+    width: s32;
+    height: s32;
+    format: Image_Format;
+    filter: Image_Filter;
+    wrap_u: Image_Wrap;
+    wrap_v: Image_Wrap;
+}
+// Scene-owned image storage for sprite renderers and material image inputs.
+Render_Image :: struct {
+    id: u64;
+    is_alive :: method() -> bool #foreign "render_image_alive";
+    destroy :: method() #foreign "render_data_destroy";
+}
+
+Vertex_Format :: enum s32 { FLOAT; FLOAT2; FLOAT3; FLOAT4; INT; }
+Vertex_Attribute :: struct {
+    offset: s32;
+    format: Vertex_Format;
+} #foreign_struct "Vertex_Attribute"
+Mesh_Bounds :: struct {
+    minimum: v3;
+    maximum: v3;
+} #foreign_struct "Mesh_Bounds"
+
+// Matches the engine mesh format. Color is premultiplied linear RGBA.
+Mesh_Vertex :: struct {
+    position: v3;
+    matrix_index: s32;
+    normal: v4;
+    tangent: v4;
+    color: v4;
+    uv: v2;
+    uv2: v2;
+}
+
+// Scene-owned geometry; pass a persistent mesh to Mesh_Renderer.set_mesh or Renderer.submit_mesh.
+Render_Mesh :: struct {
+    id: u64;
+    is_alive :: method() -> bool #foreign "render_mesh_alive";
+    destroy :: method() #foreign "render_mesh_destroy";
+}
+
+Mesh_Desc :: struct(T: typeid) {
+    vertices: []T;
+    indices: []u32;
+    attributes: []Vertex_Attribute;
+    stride: s32;
+    position_offset: s32;
+    explicit_bounds: bool;
+    bounds: Mesh_Bounds;
+}
+
+Renderer :: struct {
+    create_buffer :: proc(desc: Buffer_Desc($T)) -> Render_Buffer {
+        #unsafe return {_buffer_set({}, (&desc.data).(*u8), T, false, false)};
+    }
+    make_temp_buffer :: proc(desc: Buffer_Desc($T)) -> Render_Buffer {
+        #unsafe return {_buffer_set({}, (&desc.data).(*u8), T, true, false)};
+    }
+    update_buffer :: proc(buffer: Render_Buffer, desc: Buffer_Desc($T)) {
+        #unsafe _buffer_set(buffer, (&desc.data).(*u8), T, false, true);
+    }
+
+    create_image :: proc(desc: Image_Desc($T)) -> Render_Image {
+        #unsafe return {_image_set({}, (&desc.pixels.data.*).(*u8), T, desc.pixels.count,
+            desc.width, desc.height, desc.format, desc.filter, desc.wrap_u, desc.wrap_v, false, false)};
+    }
+    make_temp_image :: proc(desc: Image_Desc($T)) -> Render_Image {
+        #unsafe return {_image_set({}, (&desc.pixels.data.*).(*u8), T, desc.pixels.count,
+            desc.width, desc.height, desc.format, desc.filter, desc.wrap_u, desc.wrap_v, true, false)};
+    }
+    update_image :: proc(image: Render_Image, desc: Image_Desc($T)) {
+        #unsafe _image_set(image, (&desc.pixels.data.*).(*u8), T, desc.pixels.count,
+            desc.width, desc.height, desc.format, desc.filter, desc.wrap_u, desc.wrap_v, false, true);
+    }
+
+    create_mesh :: proc(desc: Mesh_Desc($T)) -> Render_Mesh {
+        #unsafe return {_mesh_set({}, (&desc.vertices.data.*).(*u8), T, desc.vertices.count,
+            desc.indices, desc.attributes, desc.stride, desc.position_offset, desc.explicit_bounds, desc.bounds, false, false)};
+    }
+    make_temp_mesh :: proc(desc: Mesh_Desc($T)) -> Render_Mesh {
+        #unsafe return {_mesh_set({}, (&desc.vertices.data.*).(*u8), T, desc.vertices.count,
+            desc.indices, desc.attributes, desc.stride, desc.position_offset, desc.explicit_bounds, desc.bounds, true, false)};
+    }
+    update_mesh :: proc(mesh: Render_Mesh, desc: Mesh_Desc($T)) {
+        #unsafe _mesh_set(mesh, (&desc.vertices.data.*).(*u8), T, desc.vertices.count,
+            desc.indices, desc.attributes, desc.stride, desc.position_offset, desc.explicit_bounds, desc.bounds, false, true);
+    }
+
+    _buffer_set :: proc(buffer: Render_Buffer, data: *u8, data_type: typeid, temporary: bool, update: bool) -> u64
+        #requires_unsafe #foreign "render_buffer_set";
+    _image_set :: proc(image: Render_Image, pixels: *u8, pixel_type: typeid, pixel_count: int,
+        width: s32, height: s32, format: Image_Format, filter: Image_Filter, wrap_u: Image_Wrap, wrap_v: Image_Wrap,
+        temporary: bool, update: bool) -> u64 #requires_unsafe #foreign "render_image_set";
+    _mesh_set :: proc(mesh: Render_Mesh, vertices: *u8, vertex_type: typeid, vertex_count: int,
+        indices: []u32, attributes: []Vertex_Attribute, stride: s32, position_offset: s32, explicit_bounds: bool, bounds: Mesh_Bounds,
+        temporary: bool, update: bool) -> u64 #requires_unsafe #foreign "render_mesh_set";
+
+    submit_mesh :: proc(mesh: Render_Mesh, transform: Matrix4, material: Material, color: v4 = {1,1,1,1}, opaque: bool = true) #foreign "render_mesh_submit";
+    submit_vertices :: proc(vertex_count: int, transform: Matrix4, material: Material, bounds: Mesh_Bounds, opaque: bool = true) #foreign "render_vertices_submit";
+}

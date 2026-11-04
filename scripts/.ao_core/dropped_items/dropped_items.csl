@@ -78,7 +78,7 @@ Dropped_Item :: class : Component {
     }
 
     update_dropped_item :: method(dt: float) {
-        visible := Camera.is_visible(visual_root.world_position);
+        visible := Camera.is_visible(visual_root.world_position.xy);
         if claimed {
             if visible {
                 t := Ease.out_quart(Ease.T(get_time() - time_claimed, 1));
@@ -107,7 +107,7 @@ Dropped_Item :: class : Component {
                 }
                 else {
                     entity.set_local_position(target_position);
-                    visual_root.set_local_position({});
+                    visual_root.set_local_position(v2{});
                     is_animating = false;
                 }
             }
@@ -124,7 +124,7 @@ Dropped_Item :: class : Component {
                     UI.push_world_draw_context();
                     defer UI.pop_draw_context();
 
-                    pos := entity.world_position;
+                    pos := entity.world_position.xy;
                     UI.push_z(pos.y);
                     defer UI.pop_z();
 

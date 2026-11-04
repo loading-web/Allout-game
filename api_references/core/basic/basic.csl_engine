@@ -39,9 +39,153 @@ format_float :: proc(v: f32, decimals: int = 6, leading_zeroes: int = 0) -> Form
     return result;
 }
 
-assert :: proc(condition: bool, fmt: string, args: [^]any = {}) #foreign "csl_assert";
+assert :: proc(condition: bool, fmt: string #fmt_string, args: [^]any = {}) #foreign "csl_assert";
 
-memcpy :: proc(dst: *u8, src: *u8, count: int) #foreign "csl_memcpy";
+memcpy :: proc(dst: *u8, src: *u8, count: int) #requires_unsafe #foreign "csl_memcpy";
+_array_sort_f32 :: proc(data: *u8, count: int, stride: int, field_offset: int, descending: bool) #requires_unsafe #foreign "csl_array_sort_f32";
+
+// Sort a dynamic array by an f32 field at the supplied byte offset.
+array_sort :: proc(array: [..]$T, field_offset: int, descending: bool = false) {
+    assert(field_offset >= 0 && field_offset + #size_of(float) <= #size_of(T),
+        "array_sort field offset % is outside an element of size %.", {field_offset, #size_of(T)});
+    if array.count < 2 return;
+    #unsafe _array_sort_f32((&array.data.*).(*u8), array.count, #size_of(T), field_offset, descending);
+}
+
+
+
+Spatial_Hash_Point :: struct {
+    id: u64;
+    position: v2;
+}
+
+Spatial_Hash_Separation :: struct {
+    id: u64;
+    acceleration: v2;
+}
+
+_Spatial_Hash_Entry :: struct {
+    point: Spatial_Hash_Point;
+    cell_x: s64;
+    cell_y: s64;
+    previous: s64;
+    next: s64;
+}
+
+_Spatial_Hash_Id_Slot :: struct {
+    id: u64;
+    entry_index: s64;
+}
+
+_spatial_hash_clear :: proc(buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) #foreign "csl_spatial_hash_clear";
+_spatial_hash_rebuild :: proc(cell_size: float, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) #foreign "csl_spatial_hash_rebuild";
+_spatial_hash_sync :: proc(cell_size: float, data: *u8, count: int, stride: int, id_offset: int, position_offset: int, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) #requires_unsafe #foreign "csl_spatial_hash_sync";
+_spatial_hash_insert :: proc(cell_size: float, id: u64, position: v2, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) -> bool #foreign "csl_spatial_hash_insert";
+_spatial_hash_update :: proc(cell_size: float, id: u64, position: v2, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) -> bool #foreign "csl_spatial_hash_update";
+_spatial_hash_remove :: proc(id: u64, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, id_slots: ref [..]_Spatial_Hash_Id_Slot) -> bool #foreign "csl_spatial_hash_remove";
+_spatial_hash_query_radius :: proc(cell_size: float, center: v2, radius: float, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, results: ref [..]Spatial_Hash_Point) #foreign "csl_spatial_hash_query_radius";
+_spatial_hash_query_box :: proc(cell_size: float, min: v2, max: v2, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, results: ref [..]Spatial_Hash_Point) #foreign "csl_spatial_hash_query_box";
+_spatial_hash_separation :: proc(cell_size: float, radius: float, strength: float, buckets: ref [..]s64, entries: ref [..]_Spatial_Hash_Entry, results: ref [..]Spatial_Hash_Separation) #foreign "csl_spatial_hash_separation";
+
+Spatial_Hash :: struct {
+    cell_size: float;
+    _buckets: [..]s64;
+    _entries: [..]_Spatial_Hash_Entry;
+    _id_slots: [..]_Spatial_Hash_Id_Slot;
+
+    _ensure_capacity :: method(min_capacity: int) {
+        entry_capacity := next_power_of_two(max(min_capacity, 8));
+        if _entries.capacity < entry_capacity {
+            _entries.reserve(entry_capacity);
+        }
+
+        table_capacity := next_power_of_two(max(min_capacity * 2, 16));
+        if _buckets.count < table_capacity {
+            _buckets.reserve(table_capacity);
+            _id_slots.reserve(table_capacity);
+            #unsafe _buckets.count = table_capacity;
+            #unsafe _id_slots.count = table_capacity;
+            _spatial_hash_rebuild(cell_size, ref _buckets, ref _entries, ref _id_slots);
+        }
+    }
+
+    init :: method(new_cell_size: float, initial_capacity: int = 64) {
+        assert(new_cell_size > 0, "Spatial_Hash cell size must be positive; got %.", {new_cell_size});
+        assert(initial_capacity >= 0, "Spatial_Hash initial capacity must not be negative; got %.", {initial_capacity});
+        cell_size = new_cell_size;
+        _entries.clear();
+        _ensure_capacity(initial_capacity);
+        _spatial_hash_clear(ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    clear :: method() {
+        if _buckets.count == 0 return;
+        _spatial_hash_clear(ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    count :: method() -> int {
+        return _entries.count;
+    }
+
+    // Replaces the hash contents with the ids and positions in a struct array.
+    // Existing allocations are reused.
+    sync :: method(items: ref [..]$T, id_offset: int, position_offset: int) {
+        assert(cell_size > 0 && _buckets.count > 0, "Spatial_Hash must be initialized before syncing.");
+        assert(id_offset >= 0 && id_offset + #size_of(u64) <= #size_of(T),
+            "Spatial_Hash id offset % is outside an element of size %.", {id_offset, #size_of(T)});
+        assert(position_offset >= 0 && position_offset + #size_of(v2) <= #size_of(T),
+            "Spatial_Hash position offset % is outside an element of size %.", {position_offset, #size_of(T)});
+        _ensure_capacity(items.count);
+        if items.count == 0 {
+            clear();
+            return;
+        }
+        #unsafe _spatial_hash_sync(cell_size, (&items.data.*).(*u8), items.count, #size_of(T), id_offset, position_offset, ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    try_insert :: method(id: u64, position: v2) -> bool {
+        assert(cell_size > 0 && _buckets.count > 0, "Spatial_Hash must be initialized before inserting.");
+        _ensure_capacity(_entries.count + 1);
+        return _spatial_hash_insert(cell_size, id, position, ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    insert :: method(id: u64, position: v2) {
+        inserted := try_insert(id, position);
+        assert(inserted, "Spatial_Hash already contains id %.", {id});
+    }
+
+    update :: method(id: u64, position: v2) -> bool {
+        if _buckets.count == 0 return false;
+        return _spatial_hash_update(cell_size, id, position, ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    remove :: method(id: u64) -> bool {
+        if _buckets.count == 0 return false;
+        return _spatial_hash_remove(id, ref _buckets, ref _entries, ref _id_slots);
+    }
+
+    // Results are exact, not just broadphase candidates. The output array is
+    // cleared and its existing allocation is reused.
+    query_radius :: method(center: v2, radius: float, results: ref [..]Spatial_Hash_Point) {
+        assert(radius >= 0, "Spatial_Hash query radius must not be negative; got %.", {radius});
+        results.reserve(_entries.count);
+        _spatial_hash_query_radius(cell_size, center, radius, ref _buckets, ref _entries, ref results);
+    }
+
+    // Both corners may be supplied in either order.
+    query_box :: method(min: v2, max: v2, results: ref [..]Spatial_Hash_Point) {
+        results.reserve(_entries.count);
+        _spatial_hash_query_box(cell_size, min, max, ref _buckets, ref _entries, ref results);
+    }
+
+    // Computes all pairwise separation accelerations in one native pass. There
+    // is one result per point, keyed by id; the output allocation is reused.
+    separation :: method(radius: float, strength: float, results: ref [..]Spatial_Hash_Separation) {
+        assert(radius > 0, "Spatial_Hash separation radius must be positive; got %.", {radius});
+        results.reserve(_entries.count);
+        _spatial_hash_separation(cell_size, radius, strength, ref _buckets, ref _entries, ref results);
+    }
+}
 
 
 
@@ -64,8 +208,21 @@ to_degrees :: proc(radians: f64) -> f64 #intrinsic "to_degrees_f64";
 to_radians :: proc(degrees: f32) -> f32 #intrinsic "to_radians_f32";
 to_radians :: proc(degrees: f64) -> f64 #intrinsic "to_radians_f64";
 
+Quaternion :: struct {
+    x: float;
+    y: float;
+    z: float;
+    w: float;
+
+    IDENTITY :: Quaternion.{0, 0, 0, 1};
+    axis_angle :: proc(axis: v3, degrees: float) -> Quaternion #foreign "quaternion_axis_angle";
+    look_at :: proc(eye: v3, target: v3, up: v3 = {0, 1, 0}) -> Quaternion #foreign "quaternion_look_at";
+}
+
 Matrix4 :: struct {
     elements: [4][4]float;
+
+    IDENTITY :: Matrix4.{{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
 
     translate :: proc(translation: v2) -> Matrix4 #foreign "matrix4_translate_2d";
     rotate    :: proc(degrees: float) -> Matrix4 #foreign "matrix4_rotate_2d";
@@ -88,7 +245,11 @@ Time :: struct {
 
 
 
-hash_murmur32 :: proc(data: *u8, count: s64, seed: u64 = 0) -> u64 #foreign "csl_hash_bytes";
+hash_murmur32 :: proc(data: *u8, count: s64, seed: u64 = 0) -> u64 #requires_unsafe #foreign "csl_hash_bytes";
+
+hash_murmur32 :: proc(text: string, seed: u64 = 0) -> u64 {
+    #unsafe return hash_murmur32(text.count == 0 ? null : &text.data.*, text.count, seed);
+}
 
 new_string  :: proc(count: int)  -> string #foreign;
 copy_string :: proc(str: string) -> string #foreign;
@@ -235,8 +396,22 @@ floor :: proc(x: f64) -> f64 #intrinsic "floor_f64";
 round :: proc(x: f32) -> f32 #intrinsic "round_f32";
 round :: proc(x: f64) -> f64 #intrinsic "round_f64";
 
+// The exact IEEE-754 representation, including signed zero and NaN payloads.
+f32_to_bits :: proc(value: f32) -> u32 {
+    #unsafe return (&value).(*u32).*;
+}
+
 next_power_of_two :: proc(n: s64) -> s64 #intrinsic "next_power_of_two";
 sign :: proc(v: $T) -> T #intrinsic "sign";
+
+// Zero-based set-bit indices. The input must be nonzero; zero asserts.
+get_lowest_bit_index  :: proc(bits: u64) -> u64 #intrinsic "get_lowest_bit_index";
+get_highest_bit_index :: proc(bits: u64) -> u64 #intrinsic "get_highest_bit_index";
+// The lowest count bits set, with count clamped to 0..64.
+get_low_bits_mask :: proc(count: int) -> u64 #intrinsic "get_low_bits_mask";
+// Deterministic, unseeded 2D gradient noise, centered on zero (approximately -1..1).
+// Non-finite or out-of-range signed-32-bit lattice coordinates produce NaN.
+simplex_noise_2d :: proc(x: float, y: float) -> float #foreign;
 
 length :: proc(v: v2) -> float #intrinsic "length_v2";
 length :: proc(v: v3) -> float #intrinsic "length_v3";

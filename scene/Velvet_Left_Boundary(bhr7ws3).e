@@ -8,10 +8,13 @@
     "X": -11.6999998092651367,
     "Y": -2.9000000953674316
   },
-  "local_rotation": 0,
-  "local_scale": {
+  "local_rotation_3d": {
+    "W": 1
+  },
+  "local_scale_3d": {
     "X": 1,
-    "Y": 1
+    "Y": 1,
+    "Z": 1
   },
   "next_sibling": 1329286305,
   "parent": 1336736246

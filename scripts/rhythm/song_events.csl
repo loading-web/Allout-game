@@ -11,7 +11,7 @@ trigger_song_events :: proc(p: Player) {
                 }
                 case 9: {
                     p.stage=(p.stage+1)%3;
-                    p.camera.position={p.stage.(float)*42,0};
+                    p.camera.position={p.stage.(float)*42,0,0};
                 }
                 case 10: {
                     e:=Scene.create_entity();

@@ -1,0 +1,48 @@
+Particle_Space_3D :: enum s32 { LOCAL; WORLD; }
+
+Particle_Emitter_3D_Desc :: struct {
+    seed: u64 #foreign;
+    capacity: s32 #foreign;
+    burst_count: s32 #foreign;
+    rate: float #foreign;
+    duration: float #foreign;
+    space: Particle_Space_3D #foreign;
+    cone_half_angle: float #foreign;
+    spawn_offset: v3 #foreign;
+    spawn_box: v3 #foreign;
+    direction: v3 #foreign;
+    speed: v2 #foreign;
+    lifetime: v2 #foreign;
+    acceleration: v3 #foreign;
+    drag: float #foreign;
+    rotation: Quaternion #foreign;
+    angular_velocity: v3 #foreign;
+    mesh_probability: float #foreign;
+    scale_start: v3 #foreign;
+    scale_end: v3 #foreign;
+    color_start: v4 #foreign;
+    color_end: v4 #foreign;
+    default :: proc() -> Particle_Emitter_3D_Desc #foreign "particle_emitter_3d_default_desc";
+} #foreign_struct "Particle_Emitter_3D_Desc"
+
+Particle_Emitter_3D :: class : Component {
+    start :: method(desc: Particle_Emitter_3D_Desc) { this.start_native(ref desc); }
+    start_native :: method(desc: ref Particle_Emitter_3D_Desc) #foreign "particle_emitter_3d_start";
+    stop :: method(clear: bool = false) #foreign "particle_emitter_3d_stop";
+    get_birth_buffer :: method() -> Render_Buffer { return {this.get_birth_buffer_id()}; }
+    get_birth_buffer_id :: method() -> u64 #foreign "particle_emitter_3d_get_buffer";
+    set_texture :: method(value: Texture_Asset) #foreign "particle_emitter_3d_set_texture";
+    get_texture :: method() -> Texture_Asset #foreign "particle_emitter_3d_get_texture";
+    set_model :: method(value: Model_Asset) #foreign "particle_emitter_3d_set_model";
+    get_model :: method() -> Model_Asset #foreign "particle_emitter_3d_get_model";
+    set_sprite_material :: method(value: Material_Asset) #foreign "particle_emitter_3d_set_sprite_material";
+    get_sprite_material :: method() -> Material_Asset #foreign "particle_emitter_3d_get_sprite_material";
+    set_mesh_material :: method(value: Material_Asset) #foreign "particle_emitter_3d_set_mesh_material";
+    get_mesh_material :: method() -> Material_Asset #foreign "particle_emitter_3d_get_mesh_material";
+    layer: int #foreign;
+    render_mode: Render_Mode #foreign;
+    cast_shadows: bool #foreign;
+    receive_shadows: bool #foreign;
+    bounds_padding: float #foreign;
+    emitting: bool #read_only #foreign;
+} #foreign_struct "Particle_Emitter_3D"
