@@ -1,0 +1,6 @@
+// Wire values shared with Bonfire and the C# AccountTrustLevel enum.
+Account_Trust_Level :: enum {
+    BASIC;
+    ESTABLISHED;
+    TRUSTED;
+}

@@ -290,7 +290,7 @@ update_rhythm_camera :: proc(p: Player, dt: float) {
     }
     if p.screen==18 && !p.reduced_motion { pulse += 0.28*sin(PI*clamp((get_time()-p.title_confirmed_at)/0.85,0,1)); }
     p.camera.follow_player = false;
-    if abs(p.camera.position.x-center)>10 { p.camera.position={center,0}; }
-    p.camera.position = lerp(p.camera.position,{center+focus,0},clamp(dt*5,0,1));
+    if abs(p.camera.position.x-center)>10 { p.camera.position={center,0,0}; }
+    p.camera.position = lerp(p.camera.position,v3{center+focus,0,0},clamp(dt*5,0,1));
     p.camera.size = lerp(p.camera.size,7.0-abs(focus)*0.12-pulse-event_camera_zoom(p),clamp(dt*6,0,1));
 }

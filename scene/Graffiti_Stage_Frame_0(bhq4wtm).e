@@ -7,10 +7,13 @@
   "local_position": {
 
   },
-  "local_rotation": 0,
-  "local_scale": {
+  "local_rotation_3d": {
+    "W": 1
+  },
+  "local_scale_3d": {
     "X": 4.8000001907348633,
-    "Y": 3.5999999046325684
+    "Y": 3.5999999046325684,
+    "Z": 1
   },
   "previous_sibling": 1340024867,
   "next_sibling": 1330464193

@@ -117,8 +117,8 @@ draw_performer_feedback :: proc(p: Player) {
         UI.begin_world_space_ui(c.entity); defer UI.end_world_space_ui();
         UI.push_layer(15); defer UI.pop_layer();
         rise:=min(age,0.5)*0.75; previous_rise:=min(max(0,age-get_fixed_delta_time()),0.5)*0.75;
-        UI.push_interpolation_offset(c.entity.calculate_interpolation_offset()+v2{0,rise-previous_rise}); defer UI.pop_interpolation_offset();
-        center:=c.entity.world_position+v2{0,2.7+rise};
+        UI.push_interpolation_offset(c.entity.calculate_interpolation_offset().xy+v2{0,rise-previous_rise}); defer UI.pop_interpolation_offset();
+        center:=c.entity.world_position.xy+v2{0,2.7+rise};
         ts:=UI.default_text_settings(); ts.font=get_asset(Font_Asset,"fonts/PermanentMarker-Regular.ttf"); ts.size=p.rating==0 ? 0.55 : 0.43;
         color:=rating_colors[p.rating]; color.w=clamp(1-age/0.75,0,1); ts.color=color; ts.outline_color={0.03,0.02,0.09,color.w};
         text:=p.using_custom ? p.playing_mod.judgement_names[p.rating] : rating_names[p.rating];

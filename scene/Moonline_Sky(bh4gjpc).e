@@ -7,10 +7,13 @@
   "local_position": {
     "Y": 1
   },
-  "local_rotation": 0,
-  "local_scale": {
+  "local_rotation_3d": {
+    "W": 1
+  },
+  "local_scale_3d": {
     "X": 5.5000000000000000,
-    "Y": 5
+    "Y": 5,
+    "Z": 1
   },
   "next_sibling": 1330199576,
   "parent": 1341434726
