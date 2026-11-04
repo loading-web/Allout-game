@@ -36,9 +36,17 @@ def parse_atlas(path, res):
         fx, fy = (int(node.get(k, '0')) for k in ('frameX', 'frameY'))
         fw, fh = int(node.get('frameWidth', w)), int(node.get('frameHeight', h))
         if min(x, y) < 0 or min(w, h, fw, fh) <= 0 or x+w > width or y+h > height:
+            print(
+                f'Frame rejected: name={name!r}, x={x}, y={y}, '
+                f'width={w}, height={h}, frameX={fx}, frameY={fy}, '
+                f'frameWidth={fw}, frameHeight={fh}',
+                flush=True,
+            )
             raise ValueError(f'Invalid or out-of-bounds frame: {name}')
-        if fx > 0 or fy > 0 or -fx+w > fw or -fy+h > fh:
-            raise ValueError(f'Invalid trimmed frame bounds: {name}')
+        # Sparrow frame fields describe registration, not a clipping rectangle.
+        # Boyfriend exports may extend outside that logical canvas or use
+        # positive offsets. Preserve them exactly to keep animation alignment;
+        # only the sampled texture rectangle must fit within the PNG (above).
         match = re.fullmatch(r'(.*?)([0-9]+)', name)
         animation = match[1] if match and match[1] else name
         number = int(match[2]) if match else 0
