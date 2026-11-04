@@ -41,6 +41,19 @@ class AtlasTests(unittest.TestCase):
         _, _, _, groups = self.parse('<SubTexture name="Still" x="0" y="0" width="20" height="30"/>')
         self.assertEqual(groups['Still'][0][2][-4:], (0, 0, 20, 30))
 
+    def test_registration_offsets_outside_canvas(self):
+        for fx, fy in [(5, 6), (-35, -46), (5, -46), (-35, 6)]:
+            with self.subTest(fx=fx, fy=fy):
+                _, _, _, groups = self.parse(f'<SubTexture name="BF NOTE DOWN MISS0000" x="1" y="2" width="20" height="30" frameX="{fx}" frameY="{fy}" frameWidth="10" frameHeight="15"/>')
+                self.assertEqual(groups['BF NOTE DOWN MISS'][0][2], (1, 2, 20, 30, fx, fy, 10, 15))
+                output = self.res / 'generated.csl'
+                importer.generate(self.res, output)
+                self.assertIn(f'trim={{{fx},{fy}}}, canvas={{10,15}}', output.read_text())
+
+    def test_nonpositive_canvas_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'out-of-bounds'):
+            self.parse('<SubTexture name="Idle0" x="0" y="0" width="20" height="30" frameWidth="0"/>')
+
     def test_missing_texture(self):
         (self.folder / 'character.png').unlink()
         with self.assertRaisesRegex(ValueError, 'Missing texture'):
