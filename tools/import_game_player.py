@@ -36,6 +36,12 @@ def parse_atlas(path, res):
         fx, fy = (int(node.get(k, '0')) for k in ('frameX', 'frameY'))
         fw, fh = int(node.get('frameWidth', w)), int(node.get('frameHeight', h))
         if min(x, y) < 0 or min(w, h, fw, fh) <= 0 or x+w > width or y+h > height:
+            print(
+                f'Frame rejected: name={name!r}, x={x}, y={y}, '
+                f'width={w}, height={h}, frameX={fx}, frameY={fy}, '
+                f'frameWidth={fw}, frameHeight={fh}',
+                flush=True,
+            )
             raise ValueError(f'Invalid or out-of-bounds frame: {name}')
         # Sparrow frame fields describe registration, not a clipping rectangle.
         # Boyfriend exports may extend outside that logical canvas or use
