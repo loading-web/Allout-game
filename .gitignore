@@ -152,7 +152,7 @@ Assembly.csproj
 scene_backups
 scene_temp
 .idea
-*.ao
+#*.ao
 *.ao.astc
 asset_report.txt
 res/.preprocessed
@@ -162,7 +162,7 @@ res/.upload_cache
 .agents
 .claude
 .codex
-.ao
+#.ao
 .mcp.json
 opencode.json
 .gemini

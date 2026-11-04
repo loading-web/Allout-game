@@ -1,0 +1,2 @@
+{"type":"msg","ts":1652763,"dir":"client","msg":{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"C:/Users/amber/Allout-game","mcpServers":[]}}}
+{"type":"msg","ts":1652844,"dir":"agent","msg":{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"Authentication required"}}}
