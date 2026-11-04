@@ -6,23 +6,51 @@ Entity :: class {
     get_local_enabled          :: method() -> bool                                                                                                                      #foreign "entity_get_local_enabled";
     get_world_enabled          :: method() -> bool                                                                                                                      #foreign "entity_get_world_enabled";
     queue_for_destruction      :: method(after_seconds: float)                                                                                                          #foreign "entity_queue_for_destruction";
-    calculate_visual_position  :: method() -> v2                                                                                                                        #foreign "entity_calculate_visual_position";
+    calculate_visual_position  :: method() -> v3 #foreign "entity_calculate_visual_position_3d";
+    get_server_position        :: method() -> v3 #foreign "entity_get_server_position_3d";
     calculate_predictive_error :: method() -> v2                                                                                                                        #foreign "entity_calculate_predictive_error";
-    calculate_interpolation_offset :: method() -> v2                                                                                                                    #foreign "entity_calculate_interpolation_offset";
+    calculate_interpolation_offset :: method() -> v3                                                                                                                    #foreign "entity_calculate_interpolation_offset";
     mark_teleported            :: method()                                                                                                                              #foreign "entity_mark_teleported";
     get_name                   :: method() -> string                                                                                                                    #foreign "entity_get_name";
     set_name                   :: method(new_name: string)                                                                                                              #foreign "entity_set_name";
     compare_name               :: method(name: string) -> bool                                                                                                          #foreign "entity_compare_name";
     set_parent                 :: method(new_parent: Entity, keep_world_transform: bool)                                                                                #foreign "entity_set_parent";
-    set_local_position         :: method(p: v2)                                                                                                                         #foreign "entity_set_local_position";
-    set_world_position         :: method(p: v2)                                                                                                                         #foreign "entity_set_world_position";
-    lerp_local_position        :: method(target: v2, t: float)                                                                                                          #foreign "entity_lerp_local_position";
-    add_local_position         :: method(delta: v2)                                                                                                                     #foreign "entity_add_local_position";
-    set_local_scale            :: method(scale: v2)                                                                                                                     #foreign "entity_set_local_scale";
-    lerp_local_scale           :: method(target: v2, t: float)                                                                                                          #foreign "entity_lerp_local_scale";
-    set_local_rotation         :: method(degrees: float)                                                                                                                #foreign "entity_set_local_rotation";
-    lerp_local_rotation        :: method(target: float, t: float)                                                                                                       #foreign "entity_lerp_local_rotation";
-    add_local_rotation         :: method(delta: float)                                                                                                                  #foreign "entity_add_local_rotation";
+    // Foreign names retain the ABI used by published games' bundled cores.
+    set_local_position :: method(p: v3) #foreign "entity_set_local_position_3d";
+    set_world_position :: method(p: v3) #foreign "entity_set_world_position_3d";
+    get_local_position :: method() -> v3 { return local_position; }
+    get_world_position :: method() -> v3 #foreign "entity_get_world_position_3d";
+    set_local_position :: method(p: v2) #foreign "entity_set_local_position";
+    set_world_position :: method(p: v2) #foreign "entity_set_world_position";
+    lerp_local_position :: method(target: v3, t: float) { set_local_position(lerp(local_position, target, t)); }
+    lerp_local_position :: method(target: v2, t: float) #foreign "entity_lerp_local_position";
+    add_local_position :: method(delta: v3) { set_local_position(local_position + delta); }
+    add_local_position :: method(delta: v2) #foreign "entity_add_local_position";
+
+    set_local_scale :: method(scale: v3) #foreign "entity_set_local_scale_3d";
+    set_world_scale :: method(scale: v3) #foreign "entity_set_world_scale_3d";
+    get_local_scale :: method() -> v3 #foreign "entity_get_local_scale";
+    get_world_scale :: method() -> v3 #foreign "entity_get_world_scale_3d";
+    set_local_scale :: method(scale: v2) #foreign "entity_set_local_scale";
+    set_world_scale :: method(scale: v2) #foreign "entity_set_world_scale";
+    lerp_local_scale :: method(target: v3, t: float) { set_local_scale(lerp(local_scale, target, t)); }
+    lerp_local_scale :: method(target: v2, t: float) #foreign "entity_lerp_local_scale";
+
+    // Scalar rotations are degrees about Z. Orientation carries the full rotation.
+    get_local_rotation :: method() -> float #foreign "entity_get_local_rotation";
+    get_world_rotation :: method() -> float #foreign "entity_get_world_rotation";
+    set_local_rotation :: method(degrees: float) #foreign "entity_set_local_rotation";
+    set_world_rotation :: method(degrees: float) #foreign "entity_set_world_rotation";
+    lerp_local_rotation :: method(target: float, t: float) #foreign "entity_lerp_local_rotation";
+    add_local_rotation :: method(delta: float) #foreign "entity_add_local_rotation";
+    get_local_orientation :: method() -> Quaternion #foreign "entity_get_local_orientation";
+    get_world_orientation :: method() -> Quaternion #foreign "entity_get_world_rotation_3d";
+    set_local_orientation :: method(orientation: Quaternion) #foreign "entity_set_local_rotation_3d";
+    set_world_orientation :: method(orientation: Quaternion) #foreign "entity_set_world_rotation_3d";
+    look_at :: method(target: v3, up: v3 = {0, 1, 0}) {
+        set_world_orientation(Quaternion.look_at(world_position, target, up));
+    }
+    get_model_matrix :: method() -> Matrix4 #foreign "entity_get_model_matrix";
     destroy                    :: method()                                                                                                                              #foreign "entity_destroy";
     add_component_raw          :: method(t: typeid, userdata: Object = {}, on_before_start: proc(component: Component, userdata: Object) = {}) -> Component             #foreign "entity_add_component";
     get_component_raw          :: method(t: typeid) -> Component                                                                                                        #foreign "entity_get_component";
@@ -50,13 +78,15 @@ Entity :: class {
     get_last_child      :: method() -> Entity    #foreign "entity_get_last_child";
     get_parent          :: method() -> Entity    #foreign "entity_get_parent";
     id:                   u64                 #read_only #foreign;
-    local_position:       v2                  #read_only("use set_local_position()") #foreign "_local_position";
-    world_position:       v2                  #read_only("use set_world_position()") #foreign "cached_world_position";
-    local_rotation:       float               #read_only("use set_local_rotation()") #foreign "_local_rotation";
-    world_rotation:       float               #read_only #foreign "cached_world_rotation";
-    local_scale:          v2                  #read_only("use set_local_scale()") #foreign "_local_scale";
-    world_scale:          v2                  #read_only #foreign "cached_world_scale";
-    model_matrix:         Matrix4             #read_only #foreign "cached_model_matrix";
+    local_position:    v3 #read_only("use set_local_position()") #foreign "_local_position";
+    world_position:    v3 #getter(get_world_position);
+    local_scale:       v3 #getter(get_local_scale);
+    world_scale:       v3 #getter(get_world_scale);
+    local_rotation:    float #getter(get_local_rotation);
+    world_rotation:    float #getter(get_world_rotation);
+    local_orientation: Quaternion #getter(get_local_orientation);
+    world_orientation: Quaternion #getter(get_world_orientation);
+    model_matrix:         Matrix4 #getter(get_model_matrix);
     inverse_model_matrix  :: method() -> Matrix4 #foreign "entity_get_inverse_model_matrix";
     Effect_Data :: class {
         active_effect: Effect_Base #read_only;
@@ -113,9 +143,32 @@ Component_Iterator :: struct(T: typeid) {
     }
 } #foreign_struct "Hierarchical_Component_Iterator<Component_Base>"
 
+Render_Mode :: enum {
+    WORLD;
+    UPRIGHT_BILLBOARD;
+    BILLBOARD;
+}
+
+World_Label_Mode :: enum {
+    SORTED;
+    DEPTH_TESTED;
+    OVERLAY;
+}
+
 Sprite_Renderer :: class : Component {
+    // World queries preserve the authored XY plane. Visual queries use an explicit view, prediction and foot anchor.
+    try_get_artwork_transform_3d :: method() -> (Matrix4, bool) #foreign "sprite_renderer_try_get_artwork_transform_3d";
+    try_get_visual_artwork_transform_3d :: method(yaw_degrees: float, pitch_degrees: float, world_view: bool = true) -> (Matrix4, bool) #foreign "sprite_renderer_try_get_visual_artwork_transform_3d";
+    use_foot_anchor: bool #foreign;
+    foot_anchor: v2 #foreign;
+    cast_shadows: bool #foreign;
+    receive_shadows: bool #foreign;
     set_texture  :: method(texture: Texture_Asset) #foreign "sprite_renderer_set_texture";
     get_texture  :: method() -> Texture_Asset #foreign "sprite_renderer_get_texture";
+    // Borrows a persistent image; updates affect every sprite using it. Destruction detaches them.
+    set_image :: method(image: Render_Image, pixels_per_unit: float = 240, pivot: v2 = {}) #foreign "sprite_renderer_set_image";
+    set_image :: method(texture: Texture_Asset) { set_texture(texture); }
+    get_image :: method() -> Render_Image #foreign "sprite_renderer_get_image";
     set_canvas   :: method(canvas: Dynamic_Canvas) #foreign "sprite_renderer_set_canvas";
     get_canvas   :: method() -> Dynamic_Canvas #foreign "sprite_renderer_get_canvas";
     set_material :: method(material: Material, transfer_ownership: bool) #foreign "sprite_renderer_set_material";
@@ -129,7 +182,35 @@ Sprite_Renderer :: class : Component {
     flip_x: bool           #foreign;
     flip_y: bool           #foreign;
     mask_in_shadow: bool   #foreign;
+    render_mode: Render_Mode #foreign;
 } #foreign_struct "Sprite_Renderer"
+
+Surface_Decal :: class : Component {
+    try_bind :: method(hit: Physics_Query_Hit_3D, world_tangent: v3) -> bool #foreign "surface_decal_try_bind";
+    set_receiver :: method(receiver: Component) #foreign "surface_decal_set_receiver";
+    get_receiver :: method() -> Component #foreign "surface_decal_get_receiver";
+    set_texture :: method(texture: Texture_Asset) #foreign "surface_decal_set_texture";
+    get_texture :: method() -> Texture_Asset #foreign "surface_decal_get_texture";
+    local_position: v3 #foreign;
+    local_normal: v3 #foreign;
+    local_tangent: v3 #foreign;
+    size: v2 #foreign;
+    projection_depth: float #foreign;
+    normal_limit_degrees: float #foreign;
+    surface_offset: float #foreign;
+    tint: v4 #foreign;
+    layer: int #foreign;
+    receive_shadows: bool #foreign;
+} #foreign_struct "Surface_Decal"
+
+Trail_Renderer :: class : Component {
+    set_texture :: method(texture: Texture_Asset) #foreign "trail_renderer_set_texture";
+    get_texture :: method() -> Texture_Asset #foreign "trail_renderer_get_texture";
+    target_length: s32 #foreign;
+    width: float #foreign;
+    depth_offset: float #foreign;
+    tint: v4 #foreign;
+} #foreign_struct "Trail_Renderer"
 
 Collider :: class : Component {
     overlaps_point :: method(point: v2) -> bool #foreign "collider_overlaps_point";
@@ -176,17 +257,444 @@ Edge_Collider :: class : Collider {
 Rigidbody :: class : Component {
 } #foreign_struct "Rigidbody"
 
+Navigation_Status_3D :: enum {
+    OK; INVALID_INPUT; STALE_SURFACE; NO_SURFACE; UNREACHABLE; LIMIT;
+    NOT_BAKED; STALE_COLLISION; STALE_SETTINGS; DISABLED; STALE_PACKAGE;
+}
+Navigation_Surface_3D :: struct {
+    revision: u64 #foreign;
+    polygon: u32 #foreign;
+    region: u32 #foreign;
+} #foreign_struct "Navigation_Surface_3D"
+Navigation_Location_3D :: struct {
+    surface: Navigation_Surface_3D #foreign;
+    position: v3 #foreign;
+} #foreign_struct "Navigation_Location_3D"
+
+Navigation_Bake_Mode_3D :: enum { AUTOMATIC; MANUAL; }
+
+// Automatic bakes are prepared on save; Manual permits explicit runtime baking.
+Navmesh_3D :: class : Component {
+    radius: float #foreign;
+    height: float #foreign;
+    step_height: float #foreign;
+    max_slope_degrees: float #foreign;
+    skin: float #foreign;
+    cell_size: float #foreign;
+    cell_height: float #foreign;
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    child_colliders_only: bool #foreign;
+    bake_mode: Navigation_Bake_Mode_3D #foreign;
+    bake :: method() -> u64 #foreign "navmesh_3d_bake";
+    load :: method() -> u64 #foreign "navmesh_3d_load";
+    get_navigation_asset :: method() -> Navigation_Asset #foreign "navmesh_3d_get_asset";
+    set_navigation_asset :: method(asset: Navigation_Asset) #foreign "navmesh_3d_set_asset";
+    clear :: method() #foreign "navmesh_3d_clear";
+    get_status :: method() -> Navigation_Status_3D #foreign "navmesh_3d_status";
+    // XYZ bounds on each axis. Failure clears location; stale hints fail explicitly.
+    nearest :: method(position: v3, half_extents: v3, location: ref Navigation_Location_3D, hint: Navigation_Surface_3D = {}) -> Navigation_Status_3D #foreign "navmesh_3d_nearest";
+    // New owned array on success; empty on failure. No partial successful routes.
+    find_path :: method(start: Navigation_Location_3D, end: Navigation_Location_3D, points: ref []Navigation_Location_3D) -> Navigation_Status_3D #foreign "navmesh_3d_find_path";
+} #foreign_struct "Navmesh_3D"
+
+Collider_3D_Shape :: enum { BOX; SPHERE; CAPSULE; }
+Physics_Query_3D_Kind :: enum { RAY; CAST; OVERLAP; }
+
+Physics_Query_3D :: struct {
+    kind: Physics_Query_3D_Kind #foreign;
+    position: v3 #foreign;
+    translation: v3 #foreign; // Full world displacement, not a unit direction.
+    rotation: Quaternion #foreign;
+    shape: Collider_3D_Shape #foreign;
+    half_extents: v3 #foreign;
+    radius: float #foreign;
+    half_segment: float #foreign;
+    offset: v3 #foreign;
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    exclude_entity: u64 #foreign;
+    exclude_body_entity: u64 #foreign;
+    exclude_body_component: u64 #foreign;
+    include_sensors: bool #foreign;
+    default :: proc() -> Physics_Query_3D #foreign "physics_3d_default_query";
+} #foreign_struct "Physics_Query_3D"
+
+Physics_Query_Hit_3D :: struct {
+    entity_id: u64 #foreign; // Entity owning the physics body.
+    body_component_id: u64 #foreign;
+    shape_id: u64 #foreign; // Opaque identity within the body; resolve with get_shape_owner().
+    point: v3 #foreign;
+    normal: v3 #foreign;
+    fraction: float #foreign;
+    material: u64 #foreign;
+    triangle: int #foreign; // -1 when absent; not a persistent imported asset identity.
+    child: int #foreign;
+    sensor: bool #foreign;
+    get_entity :: method() -> Entity #foreign "physics_3d_hit_get_entity";
+    get_shape_owner :: method() -> Component #foreign "physics_3d_hit_get_shape_owner";
+    get_model_collider :: method() -> Model_Collider_3D #foreign "physics_3d_hit_get_model_collider";
+    get_collider :: method() -> Collider_3D #foreign "physics_3d_hit_get_collider";
+    get_mesh_collider :: method() -> Mesh_Collider_3D #foreign "physics_3d_hit_get_mesh_collider";
+    get_convex_collider :: method() -> Convex_Collider_3D #foreign "physics_3d_hit_get_convex_collider";
+    get_controller :: method() -> Character_Controller_3D #foreign "physics_3d_hit_get_controller";
+} #foreign_struct "Physics_Query_Hit_3D"
+
+Physics_Trigger_Phase_3D :: enum { BEGIN; STAY; END; }
+Physics_Trigger_Event_3D :: struct {
+    tick: u64 #foreign;
+    phase: Physics_Trigger_Phase_3D #foreign;
+    sensor: Physics_Query_Hit_3D #foreign;
+    other: Physics_Query_Hit_3D #foreign;
+} #foreign_struct "Physics_Trigger_Event_3D"
+
+Physics_3D :: struct {
+    get_gravity :: proc() -> float #foreign "physics_3d_get_gravity";
+    get_substeps :: proc() -> int #foreign "physics_3d_get_substeps";
+    // Owned copies, sorted by fraction then entity/body/shape. OVERLAP has no point/normal.
+    query_all :: proc(query: Physics_Query_3D) -> []Physics_Query_Hit_3D #foreign "physics_3d_query_all";
+    // RAY/CAST only; a miss clears hit. Initial touching/overlap is omitted.
+    query_closest :: proc(query: Physics_Query_3D, hit: ref Physics_Query_Hit_3D) -> bool #foreign "physics_3d_query_closest";
+    get_completed_tick :: proc() -> u64 #foreign "physics_3d_get_completed_tick";
+    // Owned snapshots of the most recently completed tick; read in ao_late_update.
+    get_trigger_events :: proc() -> []Physics_Trigger_Event_3D #foreign "physics_3d_get_trigger_events";
+}
+
+Body_Motion :: enum { STATIC; KINEMATIC; DYNAMIC; }
+
+Rigidbody_3D :: class : Component {
+    motion: Body_Motion #foreign;
+    // Simulated by physics: gravity, collisions, forces and impulses move it. Clients
+    // predict it and smooth the server's corrections. Needs a solid Collider_3D or
+    // Convex_Collider_3D; mesh colliders stay static.
+    density: float #foreign; // Dynamic: mass per cubic unit of every collider.
+    center_of_mass_offset: v3 #foreign; // Local offset from the shape-derived COM; preserves mass and inertia.
+    friction: float #foreign;
+    restitution: float #foreign; // Bounciness, 0-1.
+    linear_damping: float #foreign;
+    angular_damping: float #foreign;
+    gravity_scale: float #foreign;
+    can_sleep: bool #foreign;
+    // Kinematic: commanded motion. Dynamic: the simulated velocity; writing it sets it.
+    linear_velocity: v3 #foreign;
+    // Dynamic: radians/second about world axes; writing it sets it.
+    angular_velocity: v3 #foreign;
+    // Result of the last completed kinematic step; set by physics, not a command.
+    motion_blocked: bool #foreign;
+    // Queued for the next physics step, then cleared. World space.
+    pending_force: v3 #foreign;
+    pending_torque: v3 #foreign;
+    pending_impulse: v3 #foreign;
+    pending_angular_impulse: v3 #foreign;
+    // Dynamic state after the last step.
+    mass: float #read_only #foreign;
+    center_of_mass: v3 #read_only #foreign;
+    sleeping: bool #read_only #foreign;
+
+    // Forces act for one step: apply them every update for a steady push.
+    add_force :: method(force: v3) { pending_force += force; }
+    add_force_at :: method(force: v3, point: v3) {
+        pending_force += force;
+        pending_torque += cross_3d(point - center_of_mass, force);
+    }
+    add_torque :: method(torque: v3) { pending_torque += torque; }
+    // Impulses change velocity at once (mass x velocity).
+    add_impulse :: method(impulse: v3) { pending_impulse += impulse; }
+    add_impulse_at :: method(impulse: v3, point: v3) {
+        pending_impulse += impulse;
+        pending_angular_impulse += cross_3d(point - center_of_mass, impulse);
+    }
+    add_angular_impulse :: method(impulse: v3) { pending_angular_impulse += impulse; }
+
+    cross_3d :: proc(a: v3, b: v3) -> v3 {
+        return v3{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+    }
+} #foreign_struct "Rigidbody_3D"
+
+Spatial_Thing_Shape :: enum { POINT; SPHERE; BOX; }
+
+// Independent of physics. Dimensions and offset are world-axis-aligned world units.
+Spatial_Thing :: class : Component {
+    shape: Spatial_Thing_Shape #foreign;
+    offset: v3 #foreign;
+    radius: float #foreign;
+    half_extents: v3 #foreign;
+    categories: u64 #foreign;
+    userdata: Object #foreign;
+} #foreign_struct "Spatial_Thing"
+
+Spatial_Things :: struct {
+    // Appends unique matches in entity/component order, leaving existing entries untouched.
+    // Inclusive overlaps; disabled/removed things excluded. Moves/shape edits are immediate.
+    in_radius :: proc(center: v3, radius: float, results: ref [..]Spatial_Thing, mask: u64 = 0xffffffffffffffff, exclude_entity: u64 = 0) {
+        extent := v3{radius,radius,radius};
+        query(center-extent,center+extent,true,center,radius,mask,exclude_entity,ref results);
+    }
+    in_aabb :: proc(lo: v3, hi: v3, results: ref [..]Spatial_Thing, mask: u64 = 0xffffffffffffffff, exclude_entity: u64 = 0) {
+        query(lo,hi,false,{},0,mask,exclude_entity,ref results);
+    }
+    query :: proc(lo: v3, hi: v3, sphere: bool, center: v3, radius: float, mask: u64, exclude_entity: u64, results: ref [..]Spatial_Thing) #foreign "spatial_things_query";
+}
+
+Collider_3D :: class : Component {
+    get_physics_material :: method() -> Physics_Material_Asset #foreign "collider_3d_get_physics_material";
+    set_physics_material :: method(material: Physics_Material_Asset) #foreign "collider_3d_set_physics_material";
+    shape: Collider_3D_Shape #foreign;
+    offset: v3 #foreign;
+    half_extents: v3 #foreign;
+    radius: float #foreign;
+    half_segment: float #foreign;
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    material: u64 #foreign;
+    sensor: bool #foreign;
+    navigation_walkable: bool #foreign; // False still blocks navigation clearance.
+} #foreign_struct "Collider_3D"
+
+// Static triangle collision. A separate GLB may be used as simplified collision.
+Mesh_Collider_3D :: class : Component {
+    get_physics_material :: method() -> Physics_Material_Asset #foreign "collider_3d_get_physics_material";
+    set_physics_material :: method(material: Physics_Material_Asset) #foreign "collider_3d_set_physics_material";
+    get_model :: method() -> Model_Asset #foreign "mesh_collider_3d_get_model";
+    set_model :: method(model: Model_Asset) #foreign "mesh_collider_3d_set_model";
+    node_id: u64 #foreign; // Zero selects all nodes; otherwise includes this node's subtree.
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    material: u64 #foreign;
+    navigation_walkable: bool #foreign;
+} #foreign_struct "Mesh_Collider_3D"
+
+// One solid enclosing hull. Concavities/holes are filled; use multiple parts on
+// the same entity for a compound static or kinematic body.
+Convex_Collider_3D :: class : Component {
+    get_physics_material :: method() -> Physics_Material_Asset #foreign "collider_3d_get_physics_material";
+    set_physics_material :: method(material: Physics_Material_Asset) #foreign "collider_3d_set_physics_material";
+    get_model :: method() -> Model_Asset #foreign "convex_collider_3d_get_model";
+    set_model :: method(model: Model_Asset) #foreign "convex_collider_3d_set_model";
+    node_id: u64 #foreign;
+    offset: v3 #foreign;
+    rotation: Quaternion #foreign; // Unit XYZW quaternion, after scale and before offset.
+    scale: v3 #foreign; // Positive per-axis scale, from 0.001 to 1000.
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    material: u64 #foreign;
+    sensor: bool #foreign;
+    navigation_walkable: bool #foreign;
+} #foreign_struct "Convex_Collider_3D"
+
+// A model's own collision as one static body: its __col_ nodes under node_id (zero selects the whole model).
+// World docs generate one for their static world.
+Model_Collider_3D :: class : Component {
+    node_id: u64 #foreign;
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    material: u64 #foreign;
+    navigation_walkable: bool #foreign;
+} #foreign_struct "Model_Collider_3D"
+
+Animation_Machine_Ownership :: enum s32 { BORROWED; OWNED; }
+Animation_Playback_Handle :: struct {
+    entity: u64 #foreign;
+    component: u64 #foreign;
+    serial: u64 #foreign;
+} #foreign_struct "Animation_Playback_Handle"
+Animation_Playback_State :: struct {
+    clip: string #foreign;
+    time: float #foreign;
+    duration: float #foreign;
+    speed: float #foreign;
+    weight: float #foreign;
+    target_weight: float #foreign;
+    layer: s32 #foreign;
+    loop: bool #foreign;
+    completed: bool #foreign;
+    stopping: bool #foreign;
+    state_controlled: bool #foreign;
+} #foreign_struct "Animation_Playback_State"
+Animation_Event :: struct {
+    name: string #foreign;
+    clip: string #foreign;
+    layer: s32 #foreign;
+    time: float #foreign;
+    playback: Animation_Playback_Handle #foreign;
+} #foreign_struct "Skeletal_Event"
+Animation_Layer :: struct {
+    weight: float #foreign;
+    additive: bool #foreign;
+    mask: string #foreign;
+} #foreign_struct "Skeletal_Layer"
+
+Model_Bone :: class : Component {} #foreign_struct "Model_Bone"
+
+// Imported models with optional skeletal animation, or a persistent procedural mesh.
+Mesh_Renderer :: class : Component {
+    Binding :: enum s32 { AUTO; DIRECT; HUMANOID; }
+    IK_Kind :: enum s32 { TWO_BONE; AIM; }
+    initial_animation: string #getter(get_initial_animation);
+    get_initial_animation :: method() -> string #foreign "mesh_renderer_get_initial_animation";
+    set_initial_animation :: method(clip: string) #foreign "mesh_renderer_set_initial_animation";
+    loop_initial_animation: bool #foreign;
+    set_animation_source :: method(source: Model_Asset) #foreign "mesh_renderer_set_animation_source";
+    set_state_machine :: method(
+        machine: State_Machine,
+        transfer_ownership: bool
+    ) #foreign "mesh_renderer_set_state_machine";
+    attach_state_machine :: method(
+        machine: State_Machine,
+        ownership: Animation_Machine_Ownership = .BORROWED
+    ) #foreign "mesh_renderer_attach_state_machine";
+    bind_animation :: method(
+        state: string,
+        clip: string,
+        source: Model_Asset = null,
+        layer: s32 = 0,
+        fade: float = 0.15,
+        binding: Binding = .AUTO
+    ) #foreign "mesh_renderer_bind_animation";
+    play_animation :: method(
+        clip: string,
+        loop: bool = true,
+        layer: s32 = 0,
+        speed: float = 1,
+        fade: float = 0.15,
+        source: Model_Asset = null,
+        binding: Binding = .AUTO
+    ) -> Animation_Playback_Handle #foreign "mesh_renderer_play_animation";
+    get_animation_playback :: method(
+        layer: s32 = 0
+    ) -> Animation_Playback_Handle #foreign "mesh_renderer_get_animation_playback";
+    get_animation_playback_state :: method(
+        playback: Animation_Playback_Handle
+    ) -> Animation_Playback_State #foreign "mesh_renderer_get_animation_playback_state";
+    seek_animation :: method(playback: Animation_Playback_Handle, time: float) #foreign "mesh_renderer_seek_animation";
+    set_animation_speed :: method(
+        playback: Animation_Playback_Handle,
+        speed: float
+    ) #foreign "mesh_renderer_set_animation_speed";
+    stop_animation :: method(
+        playback: Animation_Playback_Handle,
+        fade: float = 0.15
+    ) #foreign "mesh_renderer_stop_animation";
+    get_animation_layer :: method(layer: s32) -> Animation_Layer #foreign "mesh_renderer_get_animation_layer";
+    get_animation_event_info :: method(index: s64) -> Animation_Event #foreign "mesh_renderer_get_animation_event_info";
+    clear_animation :: method(layer: s32 = 0, fade: float = 0.15) #foreign "mesh_renderer_clear_animation";
+    set_animation_layer :: method(
+        layer: s32,
+        weight: float = 1,
+        additive: bool = false,
+        mask: string = ""
+    ) #foreign "mesh_renderer_set_animation_layer";
+    set_ik_track :: method(
+        name: string,
+        kind: IK_Kind,
+        root: string,
+        middle: string = "",
+        end: string = "",
+        layer: s32 = 0,
+        state: string = "",
+        fade: float = 0.15
+    ) #foreign "mesh_renderer_set_ik_track";
+    set_ik_target :: method(
+        name: string,
+        target: v3,
+        pole: v3 = {},
+        weight: float = 1
+    ) #foreign "mesh_renderer_set_ik_target";
+    remove_ik_track :: method(name: string) #foreign "mesh_renderer_remove_ik_track";
+    get_animation_event_count :: method() -> s64 #foreign "mesh_renderer_get_animation_event_count";
+    get_animation_event :: method(index: s64) -> string #foreign "mesh_renderer_get_animation_event";
+    get_animation_event_layer :: method(index: s64) -> s32 #foreign "mesh_renderer_get_animation_event_layer";
+    get_bone_transform :: method(name: string) -> Matrix4 #foreign "mesh_renderer_get_bone_transform";
+    reflected_bones: []string #getter(get_reflected_bones);
+    get_reflected_bones :: method() -> []string #foreign "mesh_renderer_get_reflected_bones";
+    set_reflected_bones :: method(names: []string) #foreign "mesh_renderer_set_reflected_bones";
+    try_get_bone_entity :: method(name: string) -> Entity #foreign "mesh_renderer_try_get_bone_entity";
+    get_bone_entity :: method(name: string) -> Entity #foreign "mesh_renderer_get_bone_entity";
+    cast_shadows: bool #foreign;
+    receive_shadows: bool #foreign;
+    // Above 1 keeps finer levels of detail to farther distances, below 1 coarsens sooner, zero always draws the coarsest.
+    lod_bias: float #foreign;
+    forced_lod: s32 #foreign; // Draws this level, or the mesh's coarsest; negative chooses by screen error.
+    get_model :: method() -> Model_Asset #foreign "mesh_renderer_get_model";
+    set_model :: method(model: Model_Asset) #foreign "mesh_renderer_set_model";
+    get_mesh :: method() -> Render_Mesh #foreign "mesh_renderer_get_mesh";
+    // Borrows the mesh; updating it updates every renderer using it. Destroying it leaves those renderers empty.
+    set_mesh :: method(mesh: Render_Mesh) #foreign "mesh_renderer_set_mesh";
+    set_mesh :: method(model: Model_Asset) { set_model(model); }
+    get_material_asset :: method() -> Material_Asset #foreign "mesh_renderer_get_material_asset";
+    set_material_asset :: method(material: Material_Asset) #foreign "mesh_renderer_set_material_asset";
+    set_material_instance :: method(
+        instance: Material,
+        transfer_ownership: bool
+    ) #foreign "mesh_renderer_set_material_instance";
+    get_material_instance :: method() -> Material #foreign "mesh_renderer_get_material_instance";
+    set_material_slot_instance :: method(
+        slot: u64,
+        instance: Material,
+        transfer_ownership: bool
+    ) #foreign "mesh_renderer_set_material_slot_instance";
+    get_material_slot_instance :: method(slot: u64) -> Material #foreign "mesh_renderer_get_material_slot_instance";
+    node_id: u64 #foreign;
+    color: v4 #foreign;
+    layer: s64 #foreign;
+} #foreign_struct "Mesh_Renderer"
+
+Character_Controller_3D :: class : Component {
+    radius: float #foreign;
+    height: float #foreign;
+    max_slope_degrees: float #foreign;
+    step_height: float #foreign;
+    ground_snap: float #foreign;
+    skin: float #foreign;
+    max_depenetration: float #foreign;
+    jump_speed: float #foreign;
+    // Most force (newtons) given to dynamic bodies the character walks into.
+    push_force: float #foreign;
+    categories: u64 #foreign;
+    mask: u64 #foreign;
+    // Desired XZ world units/second. Movement_Agent overrides this if present.
+    velocity: v2 #foreign;
+    jump_requested: bool #foreign;
+    request_jump :: method() { jump_requested = true; }
+    is_grounded :: method() -> bool #foreign "character_3d_is_grounded";
+    // True after a tick whose movement could not resolve (for example, when buried in collision); the character stayed in place.
+    is_stuck :: method() -> bool #foreign "character_3d_is_stuck";
+    // Last simulated velocity in world axes, including support motion.
+    get_world_velocity :: method() -> v3 #foreign "character_3d_get_world_velocity";
+    // World axes, excluding support motion while grounded. Equals world velocity when airborne.
+    get_support_relative_velocity :: method() -> v3 #foreign "character_3d_get_velocity";
+    // Last step's support motion at the feet in world axes, including rotation. Zero when airborne.
+    get_support_point_velocity :: method() -> v3 #foreign "character_3d_get_support_point_velocity";
+    // Compatibility alias for get_support_relative_velocity().
+    get_velocity_3d :: method() -> v3 { return get_support_relative_velocity(); }
+    get_ground_normal :: method() -> v3 #foreign "character_3d_get_ground_normal";
+    get_support_entity :: method() -> Entity #foreign "character_3d_get_support_entity";
+    // World-space feet. Clears velocity, support and a queued jump, even at the same position.
+    teleport_3d :: method(position: v3) #foreign "character_3d_teleport";
+    // Find clear, walkable feet at target XZ within [target.Y-max_drop, target.Y+max_rise].
+    // Failure preserves state; success teleports and grounds on the next physics tick.
+    try_place_on_ground :: method(target: v3, max_rise: float, max_drop: float) -> bool #foreign "character_3d_try_place_on_ground";
+} #foreign_struct "Character_Controller_3D"
+
 Navmesh :: class : Component {
+    // Queue this frame's inputs under a key local to this navmesh; return last frame's result.
+    // Call every frame. First call, expired keys, invalid meshes and failed paths return false.
+    request_pathfind :: method(start: v2, end: v2, key: u64, agent_radius: float = 0) -> ([]v2, bool) #foreign "navmesh_request_pathfind";
+    find_path :: method(start: v2, end: v2, agent_radius: float = 0) -> ([]v2, bool) #foreign "navmesh_find_path";
     try_find_closest_point_on_navmesh :: method(to_point: v2, result: ref v2, triangle_hint: ref s64) -> bool #foreign "navmesh_try_find_closest_point_on_navmesh";
     // Snaps position onto the mesh, then follows direction (length ignored, no max range) to the mesh boundary. Only baked geometry blocks; false = mesh not built.
     try_raycast :: method(position: v2, direction: v2) -> (v2, bool) #foreign "navmesh_try_raycast";
     rebuild_immediately :: method() -> bool #foreign "navmesh_rebuild_immediately";
     mark_for_rebuild :: method() #foreign "navmesh_mark_for_rebuild";
+    ignore_colliders: bool #foreign;
     child_colliders_only: bool #foreign;
     enable_automatic_rebuilds: bool #foreign;
 } #foreign_struct "Navmesh"
 
 Navmesh_Loop :: class : Component {
+    get_points :: method() -> []v2 #foreign "navmesh_loop_get_points";
+    set_points :: method(points: []v2) #foreign "navmesh_loop_set_points";
+    flip_inside_outside: bool #foreign;
 } #foreign_struct "Navmesh_Loop"
 
 Pathfind_Tester :: class : Component {
@@ -315,9 +823,17 @@ Spine_Bone_Transform :: struct {
 
 
 Spine_Animator :: class : Component {
+    // Bone-local affine matrix. Visual queries are for drawing, never collision/entity writes.
+    try_get_bone_transform_3d :: method(bone_name: string) -> (Matrix4, bool) #foreign "spine_animator_try_get_bone_transform_3d";
+    try_get_visual_bone_transform_3d :: method(bone_name: string, yaw_degrees: float, pitch_degrees: float, world_view: bool = true) -> (Matrix4, bool) #foreign "spine_animator_try_get_visual_bone_transform_3d";
+    use_foot_anchor: bool #foreign;
+    foot_anchor: v2 #foreign;
+    cast_shadows: bool #foreign;
+    receive_shadows: bool #foreign;
     depth_offset: float #foreign;
     layer: s64 #foreign;
     mask_in_shadow: bool #foreign;
+    render_mode: Render_Mode #foreign;
     instance: Spine_Instance #read_only #foreign "instance_csl_handle";
     using _instance_fields: Spine_Instance_Fields #read_only #foreign "instance_csl_handle";
     set_color_replace_color :: method(color: Color_Replace_Color) #foreign "spine_animator_set_color_replace_color";
@@ -363,6 +879,44 @@ Light :: class : Component {
     intensity: float #foreign;
 } #foreign_struct "Light"
 
+Skybox :: class : Component {
+    get_texture :: method() -> Texture_Asset #foreign "skybox_get_texture";
+    set_texture :: method(texture: Texture_Asset) #foreign "skybox_set_texture";
+    tint: v4 #foreign;
+    intensity: float #foreign;
+    lighting_intensity: float #foreign;
+    rotation_degrees: float #foreign;
+} #foreign_struct "Skybox"
+
+// Shines along the entity's local +Z. The first enabled directional light owns the shadow maps.
+Directional_Light_3D :: class : Component {
+    color: v4 #foreign;
+    intensity: float #foreign;
+} #foreign_struct "Directional_Light_3D"
+
+Point_Light_3D :: class : Component {
+    color: v4 #foreign;
+    intensity: float #foreign;
+    radius: float #foreign;
+} #foreign_struct "Point_Light_3D"
+
+// A cone of light along the entity's +Z, the way models face.
+Spot_Light_3D :: class : Component {
+    color: v4 #foreign;
+    intensity: float #foreign;
+    radius: float #foreign;
+    angle: float #foreign; // Degrees from the axis to the cone's edge, up to 90.
+    penumbra: float #foreign; // How much of the cone softens toward its edge, from 0 to 1.
+} #foreign_struct "Spot_Light_3D"
+
+// Reflections the editor bakes from the entity's position, projected onto an axis-aligned box of this size
+// around it. Smaller boxes win where boxes overlap.
+Reflection_Probe_3D :: class : Component {
+    size: v3 #foreign;
+    blend_distance: float #foreign; // How far inside its box the probe fades in.
+    intensity: float #foreign;
+} #foreign_struct "Reflection_Probe_3D"
+
 Spine_Event_Data :: struct {
     event:        string;
     int_value:    s64;
@@ -394,12 +948,63 @@ Attachment_Desc :: struct {
     }
 } #foreign_struct "Attachment_Desc"
 
+Camera_Projection :: enum {
+    ORTHOGRAPHIC;
+    PERSPECTIVE;
+}
+
+// How a player's camera is driven. FIXED takes its view from the camera's fields. ORBIT
+// circles the player (right-drag turns it on desktop, the wheel zooms), SHOULDER looks past
+// it and FIRST_PERSON from its eyes; those two hold the mouse on desktop. All three turn
+// with get_look() and set position themselves.
+Camera_Mode :: enum {
+    FIXED;
+    ORBIT;
+    SHOULDER;
+    FIRST_PERSON;
+}
+
+Ray_3D :: struct {
+    origin: v3;
+    direction: v3;
+} #foreign_struct "Ray_3D"
+
 Camera :: struct {
-    position:            v2            #foreign;
-    position_last_frame: v2 #read_only #foreign;
+    position:            v3            #foreign;
+    position_last_frame: v3 #read_only #foreign;
+    projection:          Camera_Projection #foreign; // Lens for the shared XYZ world and rendered picking.
+    follow_offset:       v3            #foreign;
+    yaw_degrees: float     #foreign;
+    pitch_degrees: float   #foreign;
+    // FIXED cameras may follow a full XYZ rotation, including inverted vehicles.
+    use_orientation: bool #foreign;
+    orientation: Quaternion #foreign; // Unit quaternion; local +Z forward, +Y up.
+    distance: float        #foreign;
+    vertical_fov_degrees: float #foreign;
+    near_clip:           float         #foreign;
+    far_clip:            float         #foreign; // Orthographic only; perspective has no far clipping plane.
     size:                float         #foreign "orthographic_size";
     size_last_frame:     float #read_only #foreign "orthographic_size_last_frame";
     follow_player:       bool          #foreign;
+
+    // Set it on the server, any time; a change blends over transition_time (cuts in and out of FIRST_PERSON).
+    mode:                Camera_Mode   #foreign;
+    pivot_height:        float         #foreign; // ORBIT and SHOULDER circle this far above the feet.
+    orbit_distance:      float         #foreign; // Scaled by the player's zoom within zoom_range.
+    zoom_range:          v2            #foreign; // Equal ends disable zoom.
+    pitch_range:         v2            #foreign; // ORBIT and SHOULDER, degrees; positive looks down.
+    shoulder_offset:     v2            #foreign; // Right along the camera, up along world Y.
+    shoulder_distance:   float         #foreign;
+    // The owning client does not see its own player artwork in FIRST_PERSON.
+    first_person_eye_height: float     #foreign;
+    auto_recenter:       bool          #foreign; // ORBIT on touch turns toward the heading once the player stops dragging the view.
+    collision:           bool          #foreign; // ORBIT and SHOULDER pull in ahead of static geometry.
+    collision_radius:    float         #foreign;
+    transition_time:     float         #foreign;
+
+    // Where the view starts and which way it faces, from the latest solved camera.
+    get_eye_position :: method() -> v3 #foreign "camera_get_eye_position";
+    get_forward :: method() -> v3 #foreign "camera_get_forward";
 
     is_visible :: proc(point: v2, apron: float = 1) -> bool #foreign "camera_is_visible_point";
     is_visible :: proc(rect: Rect, apron: float = 1) -> bool #foreign "camera_is_visible";
@@ -447,10 +1052,71 @@ Post_Processing :: struct {
     vignette            :: proc(config: Vignette_Config)              #foreign "post_processing_vignette";
 }
 
+// World lighting and atmosphere under either camera lens. Light colors scale by an intensity; sky,
+// cloud and fog colors are what the camera sees there.
+Scene_Lighting :: struct {
+    ambient_color:        v3    #foreign; // From above, blending into ground_ambient_color below.
+    ground_ambient_color: v3    #foreign;
+    sun_direction:        v3    #foreign; // Towards the light, Y up.
+    sun_color:            v3    #foreign;
+    sun_intensity:        float #foreign;
+    sky:                  bool  #foreign; // Perspective views draw this sky instead of the clear color.
+    sky_color:            v3    #foreign; // Straight up.
+    horizon_color:        v3    #foreign;
+    sun_disc_degrees:     float #foreign; // Zero hides the sun's disc.
+    cloud_cover:          float #foreign; // 0 to 1.
+    cloud_color:          v3    #foreign;
+    fog_color:            v3    #foreign;
+    fog_density:          float #foreign; // Light lost per meter at fog_height; zero turns fog off.
+    fog_height_falloff:   float #foreign; // Per meter above fog_height; zero is even at every height.
+    fog_height:           float #foreign;
+    fog_start:            float #foreign; // Distance from the eye before fog begins.
+    exposure:             float #foreign;
+} #foreign_struct "Scene_Lighting"
+
+// The lighting and atmosphere authored in Game Config > Presentation, with the first enabled Directional_Light_3D as
+// the sun.
+get_scene_lighting :: proc() -> Scene_Lighting #foreign;
+// Lights this frame on this client with other lighting and atmosphere, for example a dark cave around the local
+// player or a day-night cycle. Its sun needs a Directional_Light_3D in the scene; other directional, point and spot
+// lights still apply. Call it every frame you want it.
+set_frame_lighting :: proc(lighting: Scene_Lighting) #foreign;
+
+// Where a 3D player (one with an enabled Character_Controller_3D) turns its entity about
+// world Y. AUTO faces the look with a SHOULDER or FIRST_PERSON camera and the movement
+// otherwise; SCRIPT leaves the orientation to the game.
+// Player_Base.defaults bits.
+// Space and an on-screen button (where the first ability button sits) jump a Character_Controller_3D
+// with a jump_speed.
+PLAYER_DEFAULT_JUMP_CONTROLS : u64 : 1;
+// The 3D character (set_character(.MODEL_3D)) plays its jump clip while airborne.
+PLAYER_DEFAULT_JUMP_ANIMATION : u64 : 2;
+
+Facing_Mode :: enum {
+    AUTO;
+    MOVEMENT;
+    LOOK;
+    SCRIPT;
+}
+
+// The stock player's artwork. MODEL_3D draws the engine's 3D character, which plays its idle,
+// run and jump clips with the player's movement, in place of the Spine rig.
+Player_Character :: enum {
+    SPINE_2D;
+    MODEL_3D;
+}
+
 AO_Player :: class : Component {
+    use_3d_physics: bool #read_only #foreign;
+    set_use_3d_physics :: method(value: bool) #foreign "player_set_use_3d_physics";
+    // SPINE_2D to start with; switch at any time.
+    character: Player_Character #read_only #foreign;
+    set_character :: method(value: Player_Character) #foreign "player_set_character";
     animator:               Spine_Animator      #read_only #foreign "animator_csl_handle";
     agent:                  Movement_Agent      #read_only #foreign "agent_csl_handle";
     camera:                 Camera                         #foreign;
+    // Runtime orientation for this player's view. Defaults to LANDSCAPE.
+    device_orientation:    Device_Orientation              #foreign;
     device_kind:            Device_Kind         #read_only #foreign;
     do_name_color_override: bool                           #foreign;
     name_color_override:    v4                             #foreign;
@@ -458,21 +1124,47 @@ AO_Player :: class : Component {
     default_inventory:      Inventory           #read_only #foreign "player_inventory_csl_handle";
     comms_channel_listen_mask: u64                         #foreign;
     comms_channel_speak_mask:  u64                         #foreign;
-    username_rect:             Rect                        #foreign "final_name_rect";
-    full_nameplate_rect:       Rect                        #foreign;
+    username_rect:             Rect #getter(get_username_rect);
+    full_nameplate_rect:       Rect #getter(get_full_nameplate_rect);
+    get_username_rect       :: method() -> Rect #foreign "player_get_username_rect";
+    get_full_nameplate_rect :: method() -> Rect #foreign "player_get_full_nameplate_rect";
+    screen_name_rect:          Rect                        #read_only #foreign;
+    screen_nameplate_rect:     Rect                        #read_only #foreign;
+    nameplate_mode:            World_Label_Mode            #foreign;
+    facing:                    Facing_Mode                 #foreign;
+    turn_speed:                float                       #foreign; // Degrees per second; zero turns at once.
+    // PLAYER_DEFAULT_* bits, all set to start with. Clear one to do that part yourself.
+    defaults:                  u64                         #foreign;
     input_this_frame:          v2                          #foreign;
     #deprecate_soft "Use override_movement_input_for_next_step()."
     input_override:            v2                          #foreign;
     player_for_prediction:     Player                      #foreign "player_for_prediction_csl_handle";
 } #foreign_struct "Player"
 
+Agent_Path_Result_3D :: struct {
+    status: Navigation_Status_3D #foreign;
+    next_point: Navigation_Location_3D #foreign;
+    move_direction: v2 #foreign;
+    reached: bool #foreign;
+} #foreign_struct "Agent_Path_Result_3D"
+
 Movement_Agent :: class : Component {
+    // Added after navigation steering and consumed once by the next movement step.
+    impulse: v2 #foreign;
     Set_Path_Target_Result :: struct {
         success:        bool;
         next_point:     v2;
         move_direction: v2;
     }
     set_path_target        :: method(target: v2, speed: float) -> Set_Path_Target_Result #foreign "movement_agent_set_path_target";
+    // Call each update; speed is world units/second. Box3D alone controls height.
+    set_path_target_3d :: method(target: v3, speed: float, half_extents: v3 = {0.5,0.5,0.5}, hint: Navigation_Surface_3D = {}) -> Agent_Path_Result_3D #foreign "movement_agent_set_path_target_3d";
+    get_path_result_3d :: method() -> Agent_Path_Result_3D #foreign "movement_agent_get_path_result_3d";
+    set_navmesh_3d :: method(navmesh: Navmesh_3D) #foreign "movement_agent_set_navmesh_3d";
+    stopping_distance_3d: float #foreign;
+    avoidance_3d: bool #foreign;
+    avoidance_horizon_3d: float #foreign;
+    avoidance_margin_3d: float #foreign;
     set_navmesh_to_lock_to :: method(navmesh: Navmesh) #foreign "movement_agent_set_navmesh_to_lock_to";
     // Acceleration-like input tuning value, not world units per second.
     // 300 settles near 5 world units per second at the default friction 0.5.
@@ -493,6 +1185,7 @@ Movement_Agent :: class : Component {
 // whose live objects alias the real engine struct and must keep its layout.
 Asset :: class {
 } #gc_root
+
 
 Texture_Asset :: class : Asset {
     get_width :: method() -> s64 #foreign "texture_asset_get_width";
@@ -541,11 +1234,83 @@ Font_Asset :: class : Asset {
 UIDoc_Asset :: class : Asset {
 }
 
+Model_Metadata_Status :: enum s32 { OK; UNAVAILABLE; NOT_FOUND; AMBIGUOUS; STALE; INVALID_ARGUMENT; }
+Model_Metadata_Kind :: enum s32 { NODE; BONE; CLIP; MATERIAL_SLOT; }
+
+Model_Metadata_Info :: struct {
+    asset_key: u64 #foreign;
+    revision: u64 #foreign;
+    node_count: int #foreign;
+    bone_count: int #foreign;
+    clip_count: int #foreign;
+    material_slot_count: int #foreign;
+    minimum: v3 #foreign;
+    maximum: v3 #foreign;
+    has_bounds: bool #foreign;
+} #foreign_struct "Model_Metadata_Info"
+
+Model_Metadata_Key :: struct {
+    asset_key: u64 #foreign;
+    revision: u64 #foreign;
+    index: int #foreign;
+    kind: Model_Metadata_Kind #foreign;
+} #foreign_struct "Model_Metadata_Key"
+
+// Owned copies. IDs/paths survive supported reimports; keys require the exact content revision.
+Model_Metadata_Record :: struct {
+    key: Model_Metadata_Key #foreign;
+    id: u64 #foreign;
+    parent_id: u64 #foreign;
+    name: string #foreign;
+    path: string #foreign;
+    duration: float #foreign;
+    editable: bool #foreign;
+} #foreign_struct "Model_Metadata_Record"
+
+Model_Asset :: class : Asset {
+    get_metadata_info :: method(info: ref Model_Metadata_Info) -> Model_Metadata_Status #foreign "model_metadata_info";
+    try_get_metadata :: method(
+        kind: Model_Metadata_Kind,
+        index: int,
+        record: ref Model_Metadata_Record,
+        revision: u64 = 0
+    ) -> Model_Metadata_Status #foreign "model_metadata_get";
+    try_find_metadata :: method(
+        kind: Model_Metadata_Kind,
+        name_or_path: string,
+        record: ref Model_Metadata_Record,
+        revision: u64 = 0
+    ) -> Model_Metadata_Status #foreign "model_metadata_find";
+    try_find_metadata_by_id :: method(
+        kind: Model_Metadata_Kind,
+        id: u64,
+        record: ref Model_Metadata_Record,
+        revision: u64 = 0
+    ) -> Model_Metadata_Status #foreign "model_metadata_find_id";
+    validate_metadata :: method(key: Model_Metadata_Key) -> Model_Metadata_Status #foreign "model_metadata_validate";
+    get_material_slot_count :: method() -> int #foreign "model_material_slot_count";
+    get_material_slot_name :: method(index: int) -> string #foreign "model_material_slot_name";
+    get_material_slot_id :: method(index: int) -> u64 #foreign "model_material_slot_id";
+    is_material_slot_editable :: method(index: int) -> bool #foreign "model_material_slot_editable";
+    find_material_slot :: method(name: string) -> int #foreign "model_find_material_slot";
+}
+
+Material_Asset :: class : Asset {
+}
+
+Physics_Material_Asset :: class : Asset {
+}
+
+Navigation_Asset :: class : Asset {
+}
+
 Shader_Asset :: class : Asset {
 }
 
 Material :: class {
     create      :: proc(shader: Shader_Asset) -> Material #foreign "material_create";
+    create      :: proc(asset: Material_Asset) -> Material #foreign "material_create_from_asset";
+    clone       :: method() -> Material #foreign "material_clone";
     destroy     :: method() #foreign "material_destroy";
     set_float   :: method(name: string, value: float) #foreign "material_set_float";
     set_float2  :: method(name: string, value: v2) #foreign "material_set_float2";
@@ -553,6 +1318,8 @@ Material :: class {
     set_float4  :: method(name: string, value: v4) #foreign "material_set_float4";
     set_int     :: method(name: string, value: int) #foreign "material_set_int";
     set_texture :: method(name: string, texture: Texture_Asset) #foreign "material_set_texture";
+    set_buffer  :: method(name: string, buffer: Render_Buffer) #foreign "material_set_buffer";
+    set_image   :: method(name: string, image: Render_Image) #foreign "material_set_image";
 } #gc_root #foreign_struct "Pooled_User_Material"
 
 UIDoc_Event :: struct {
@@ -716,6 +1483,19 @@ Quad_Params :: struct {
     rotation_degrees: float                   #foreign;
 } #foreign_struct "Quad_Params"
 
+Quad_Data :: struct {
+    p1:      v2            #foreign;
+    p2:      v2            #foreign;
+    p3:      v2            #foreign;
+    p4:      v2            #foreign;
+    uv1:     v2            #foreign;
+    uv2:     v2            #foreign;
+    uv3:     v2            #foreign;
+    uv4:     v2            #foreign;
+    color:   v4            #foreign;
+    texture: Texture_Asset #foreign;
+} #foreign_struct "CSL_UI_Quad_Data"
+
 Button_Settings :: struct {
     color:                       v4                      #foreign;
     hovered_color:               v4                      #foreign;
@@ -737,6 +1517,7 @@ Button_Settings :: struct {
     stay_hot_while_active:       bool                    #foreign;
     return_to_center_to_cancel:  bool                    #foreign;
     sprite_fit_aspect:           bool                    #foreign;
+    left_click_only:             bool                    #foreign; // Accept left-click/touch; right-click passes through.
     keybind:                     u64                     #foreign;
 } #foreign_struct "UI::Button_Settings"
 
@@ -919,7 +1700,12 @@ Server :: struct {
 }
 
 Editor :: struct {
+    is_active_scene :: proc() -> bool #foreign "editor_is_active_scene";
+    hide_entity_gizmo_this_frame :: proc() #foreign "editor_hide_entity_gizmo_this_frame";
     is_entity_selected :: proc(entity: Entity) -> bool #foreign "editor_is_entity_selected";
+    // Selects the exact entity in the active editor scene. Null clears; additive preserves the selection.
+    // Has no effect outside the editor or from an inactive scene's callbacks.
+    select_entity :: proc(entity: Entity, additive: bool = false) #foreign "editor_select_entity";
 }
 
 // Define named notifications with title/body translation slugs through the game's
@@ -952,6 +1738,7 @@ Scene :: struct {
     get_closest_component_in_range_raw :: proc(position: v2, range: float, component_type: typeid) -> (Component, bool) #foreign;
 
     create_entity :: proc() -> Entity #foreign;
+    // In the editor, the result remains linked to its source prefab.
     instantiate :: proc(prefab: Prefab_Asset, position: v2 = {}, userdata: Object = {}, on_before_start: proc(entity: Entity, userdata: Object) = {}) -> Entity #foreign "prefab_instantiate";
     instantiate :: proc(prefab: Prefab_Asset, position: v2, on_before_start: proc(entity: Entity)) -> Entity {
         return Scene.instantiate(prefab, position, {}, proc(entity: Entity, userdata: Object) {
@@ -1034,55 +1821,41 @@ User_Ability_Info :: struct {
     on_init: proc(ability: Ability_Base);
 }
 
-try_get_constant_procedure :: proc(ti: Type_Info_Struct, name: string, $T: typeid) -> T {
-    for i: 0..ti.members.count-1 {
-        if ti.members[i].constant {
-            if ti.members[i].name == name {
-                offset := ti.members[i].offset;
-                assert(offset >= 0, "offset was invalid: % %, %, %", {ti.*, T, name, offset});
-                if ti.members[i].type.kind == .OVERLOAD_SET {
-                    #unsafe overloads := (&ti.constant_storage[offset]).(*[]Type_Info_Overload).*;
-                    required_type := #type_info(T).(Type_Info_Procedure);
-                    for j: 0..overloads.count-1 #reverse {
-                        overload := overloads[j];
-                        compatible := overload.type.argument_types.count == required_type.argument_types.count;
+type_info_procedure_is_compatible :: proc(source: Type_Info_Procedure, target: Type_Info_Procedure) -> bool {
+    if source.is_foreign != target.is_foreign return false;
+    if source.requires_unsafe && !target.requires_unsafe return false;
+    if source.argument_types.count != target.argument_types.count return false;
 
-                        if compatible && overload.type.return_type != required_type.return_type {
-                            source_type := overload.type.return_type;
-                            target_type := required_type.return_type;
-                            compatible = source_type != null && target_type != null && source_type.kind == .CLASS && target_type.kind == .CLASS;
-                            if compatible {
-                                source_struct := source_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
-                                target_struct := target_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
-                                compatible = a_inherits_from_b(source_struct, target_struct);
-                            }
-                        }
-
-                        if compatible {
-                            for k: 0..overload.type.argument_types.count-1 {
-                                source_type := overload.type.argument_types[k];
-                                target_type := required_type.argument_types[k];
-                                if source_type == target_type continue;
-
-                                compatible = source_type.kind == .CLASS && target_type.kind == .CLASS;
-                                if compatible {
-                                    source_struct := source_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
-                                    target_struct := target_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
-                                    compatible = a_inherits_from_b(source_struct, target_struct);
-                                }
-                                if !compatible break;
-                            }
-                        }
-
-                        if compatible #unsafe return (&overload.procedure).(*T).*;
-                    }
-                    return null;
-                }
-                #unsafe return (&ti.constant_storage[offset]).(*T).*;
-            }
-        }
+    if source.return_type != target.return_type {
+        if source.return_type == null || target.return_type == null return false;
+        if source.return_type.kind != .CLASS || target.return_type.kind != .CLASS return false;
+        source_struct := source.return_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
+        target_struct := target.return_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
+        if !a_inherits_from_b(source_struct, target_struct) return false;
     }
-    return null;
+
+    for i: 0..source.argument_types.count-1 {
+        source_type := source.argument_types[i];
+        target_type := target.argument_types[i];
+        if source_type == target_type continue;
+        if source_type.kind != .CLASS || target_type.kind != .CLASS return false;
+        source_struct := source_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
+        target_struct := target_type.(Type_Info_Class).reference_to.(Type_Info_Struct);
+        if !a_inherits_from_b(source_struct, target_struct) return false;
+    }
+    return true;
+}
+
+_get_constant_procedure :: proc(destination: *u8, owner: typeid, name: string, target: typeid) #requires_unsafe #foreign "csl_get_constant_procedure";
+
+try_get_constant_procedure :: proc(ti: Type_Info_Struct, name: string, $T: typeid) -> T {
+    result: T;
+    if ti != null {
+        // Validate the signature and fetch the value from compiler-owned data.
+        // Reflection members, offsets, type flags, and constant bytes are mutable.
+        #unsafe _get_constant_procedure((&result).(*u8), ti.id, name, T);
+    }
+    return result;
 }
 
 Keybind :: u64;
@@ -1175,6 +1948,7 @@ core_on_hotload :: proc() {
 
     reify_all_abilities();
     for player: component_iterator(Player) {
+        player.abilities.ordered_remove_by_value(null, .ALL);
         ensure_player_has_all_abilities(player);
     }
 
@@ -1449,6 +2223,21 @@ get_mouse_scroll :: proc(consume: bool) -> float #foreign;
 get_mouse_screen_position :: proc() -> v2 #foreign;
 get_mouse_world_position :: proc() -> v2 #foreign;
 
+// The player whose input is being processed had the mouse held for its SHOULDER or
+// FIRST_PERSON camera. Escape or switching away releases it until the player clicks the
+// game again; that click is not passed to the game.
+is_mouse_look_active :: proc() -> bool #foreign;
+// That player's look in degrees: x is yaw, y is pitch (positive looks down). It travels
+// with the input, so the server and every resim agree on the aim.
+get_look :: proc() -> v2 #foreign;
+// Recover stick axes using the camera basis captured with this input, including resims.
+world_to_movement_input :: proc(input: v2) -> v2 #foreign;
+// Re-aim the local look (owning client only), e.g. to face a new way after a teleport.
+set_look :: proc(look: v2) #foreign;
+set_look_sensitivity :: proc(degrees_per_pixel: float) #foreign;
+// Unit view direction for a look in degrees.
+look_direction :: proc(look: v2) -> v3 #foreign;
+
 get_frame_number :: proc() -> u64 #foreign;
 
 Scroll_View_Result :: struct {
@@ -1506,7 +2295,7 @@ UI :: struct {
     begin_world_space_ui :: proc(entity: Entity) {
         push_world_draw_context();
         if entity != null {
-            push_interpolation_offset(entity.calculate_interpolation_offset());
+            push_interpolation_offset(entity.calculate_interpolation_offset().xy);
         }
         else {
             push_interpolation_offset(v2{});
@@ -1530,6 +2319,7 @@ UI :: struct {
     wire_circle :: proc(center: v2, radius: float, thickness: float, color: v4 = {0, 1, 0, 1}, resolution := 32) #foreign "ui_wire_circle";
     line :: proc(start: v2, end: v2, thickness: float, texture: Texture_Asset, color: v4 = {1, 1, 1, 1}, repeat_texture := false) #foreign "ui_line";
     quad :: proc(rect: Rect, texture: Texture_Asset, color: v4 = {1, 1, 1, 1}, params: Quad_Params = {}) #foreign "ui_quad";
+    quads :: proc(quads: []Quad_Data) #foreign "ui_quads";
     player_avatar :: proc(rect: Rect, player: Player, color: v4 = {1, 1, 1, 1}) #foreign "ui_player_avatar";
     quad_interpolated :: proc(rect: Rect, previous_rect: Rect, texture: Texture_Asset, color: v4 = {1, 1, 1, 1}, params: Quad_Params = {}) #foreign "ui_quad_interpolated";
     quad_interpolated :: proc(rect: Rect, previous_rect: Rect, previous_matrix: Matrix4, texture: Texture_Asset, color: v4 = {1, 1, 1, 1}, params: Quad_Params = {}) #foreign "ui_quad_interpolated_matrix";
@@ -1743,8 +2533,13 @@ UI :: struct {
 }
 
 world_to_screen :: proc(world: v2) -> v2 #foreign;
+world_to_screen :: proc(world: v3) -> (v2, bool) #foreign "world_to_screen_3d";
 world_to_screen_interpolation_offset :: proc(world: v2, world_offset_from_last_frame: v2) -> v2 #foreign;
 screen_to_world :: proc(world: v2) -> v2 #foreign;
+screen_to_world_ray :: proc(screen: v2) -> Ray_3D #foreign;
+// False (and a zero ray) when the active camera cannot produce a ray for this screen point.
+try_screen_to_world_ray :: proc(screen: v2, ray: ref Ray_3D) -> bool #foreign;
+screen_to_world_on_elevation :: proc(screen: v2, elevation: float) -> (v3, bool) #foreign;
 
 Rect :: struct {
     min: v2;
@@ -2026,6 +2821,8 @@ Product :: struct {
 
 Purchasing :: struct {
     prompt_purchase :: proc(player: Player, id: string)         #foreign "purchasing_prompt_purchase";
+    // Lets the local player choose a friend and confirm a free or paid gift.
+    prompt_gift_purchase :: proc(player: Player, id: string) #foreign "purchasing_prompt_gift_purchase";
     // Opens the VIP subscription purchase flow for the local player. Call once from a UI action.
     prompt_vip_purchase :: proc(player: Player) #foreign "purchasing_prompt_vip_purchase";
     owns_product    :: proc(player: Player, id: string) -> bool #foreign "purchasing_owns_product";
@@ -2195,6 +2992,8 @@ Save :: struct {
     get_all_game_keys     :: proc() -> []Save_Game_Key                                             #foreign "save_get_all_game_keys";
 
     ordered_set     :: proc(document: string, key: string, value: f64) #foreign "save_ordered_set";
+    // Adds amount to the stored score (missing keys start at 0). Concurrent increments are never lost.
+    ordered_increment :: proc(document: string, key: string, amount: f64) #foreign "save_ordered_increment";
     ordered_get     :: proc(document: string, key: string, default: f64, userdata: Object, #no_captures callback: proc(entry: Ordered_Save_Entry, userdata: Object)) #foreign "save_ordered_get";
     ordered_get_all :: proc(document: string, offset: s64, limit: s64, userdata: Object, #no_captures callback: proc(entries: []Ordered_Save_Entry, userdata: Object)) #foreign "save_ordered_get_all";
 }
@@ -2386,7 +3185,10 @@ Ease :: struct {
 
     fade_in_and_out  :: proc(fade_duration: float, total_duration: float, time: float) -> float #foreign "ease_fade_in_and_out";
     slide_in_and_out :: proc(fade_duration: float, total_duration: float, time: float) -> float #foreign "ease_slide_in_and_out";
-    bump             :: proc(time_bettween_bumps: float, bump_duration: float, time: float) -> float #foreign "ease_bump";
+    bump             :: proc(time_between_bumps: float, bump_duration: float, time: float) -> float #foreign "ease_bump";
+    bump :: proc(time: float) -> float {
+        return bump(1, 0.5, time);
+    }
 }
 
 Keybinds :: struct {
@@ -2565,6 +3367,11 @@ Spine_Instance :: class : Spine_Instance_Fields {
 // Player
 //
 
+Device_Orientation :: enum s32 {
+    LANDSCAPE;
+    PORTRAIT;
+}
+
 Device_Kind :: enum {
     PC;
     PHONE;
@@ -2572,6 +3379,9 @@ Device_Kind :: enum {
 }
 
 Player_Base :: class : AO_Player {
+    // XY teleport preserves Z; the world variant accepts world-space feet.
+    teleport :: method(position: v2) #foreign "player_teleport";
+    teleport_3d :: method(position: v3) #foreign "player_teleport_3d";
     get_username :: method() -> string #foreign "player_get_username";
     get_user_id ::  method() -> string #foreign "player_get_user_id";
 
@@ -2667,6 +3477,14 @@ Player_Base :: class : AO_Player {
     has_joystick_disable_reason    :: method(reason: string) -> bool #foreign "player_has_joystick_disable_reason";
     has_any_joystick_disable_reason :: method() -> bool #foreign "player_has_any_joystick_disable_reason";
 
+    // While any reason is held the player's input stops turning a look-mode camera, e.g. with a map open.
+    add_look_disable_reason     :: method(reason: string) #foreign "player_add_look_disable_reason";
+    remove_look_disable_reason  :: method(reason: string) #foreign "player_remove_look_disable_reason";
+    has_any_look_disable_reason :: method() -> bool #foreign "player_has_any_look_disable_reason";
+    // A short, still touch on the world this frame (not on UI), or a desktop left click no UI
+    // took, in screen pixels. Pair it with try_screen_to_world_ray.
+    get_world_tap :: method(position: ref v2) -> bool #foreign "player_get_world_tap";
+
     is_local_or_server :: method() -> bool #foreign "player_is_local_or_server";
     is_local           :: method() -> bool #foreign "player_is_local";
 
@@ -2698,6 +3516,8 @@ Player_Base :: class : AO_Player {
     is_vip             :: method() -> bool #foreign "player_is_vip";
     // Recorded friend-code referrals, refreshed on joining a server. Independent of capped Spark bonuses.
     get_friend_referral_count :: method() -> int #foreign "player_get_friend_referral_count";
+    // Server-assigned account investment tier, snapshotted on joining. Not an identity guarantee.
+    get_trust_level :: method() -> Account_Trust_Level #foreign "player_get_trust_level";
     is_moderator       :: method() -> bool #foreign "player_is_moderator";
     is_youtuber        :: method() -> bool #foreign "player_is_youtuber";
 
@@ -3153,7 +3973,7 @@ Emote_Effect :: class : Effect_Base {
 
         if Game.is_server() && sound_asset != null {
             desc := SFX.default_sfx_desc();
-            desc.set_position(player.entity.world_position);
+            desc.set_position(player.entity.world_position.xy);
             desc.volume = 0.25;
             if loop_until_move && !is_dab {
                 desc.loop = true;
@@ -3185,12 +4005,13 @@ Emote_Effect :: class : Effect_Base {
             has_spawned_fart = true;
 
             y_offset := 0.6;
-            scale := v2{2.4, 2.4} * player.entity.local_scale * player.animator.instance.scale;
+            visual_scale := player.animator.entity.world_scale.xy;
+            scale := v2{2.4, 2.4} * visual_scale * player.animator.instance.scale;
             offset := v2{1.2, y_offset} * scale / 2.4;
             offset.x = -offset.x;
 
             fart_entity := Scene.create_entity();
-            fart_entity.set_world_position(player.entity.world_position + offset);
+            fart_entity.set_world_position(player.entity.world_position + v3{offset.x, offset.y, 0});
             fart_vfx := fart_entity.add_component(Emote_Fart_VFX);
             fart_vfx.player = player;
             fart_vfx.animator.instance.scale = scale;
@@ -3273,6 +4094,7 @@ Ability_Base :: class {
     type: typeid;
     _tutorial_id: string;
     is_aimed_ability: bool;
+    tap_to_activate: bool;
     mouse_position_on_press: v2;
     max_drag_offset_this_press: float;
 
@@ -3451,6 +4273,13 @@ draw_ability_button :: proc(player: Player, $T: typeid, index: int) {
             {-440, 40},
         };
 
+        if UI.get_screen_rect().height() > UI.get_screen_rect().width() {
+            button_offsets = ([6]v2){
+                {-105, 300}, {-55, 500}, {-195, 500},
+                {-55, 640}, {-195, 640}, {-280, 300},
+            };
+        }
+
         button_half_size := 100.0;
         button_sprite := core_globals.ability_bg_big;
         button_pressed_sprite := core_globals.ability_pressed_bg_big;
@@ -3616,7 +4445,7 @@ draw_ability_button :: proc(player: Player, $T: typeid, index: int) {
             player.failed_aimed_ability_tap_count = 0;
             player.aimed_ability_drag_hint = null;
         }
-        else if params.released && params.can_use && player.aimed_ability_drag_hint == null {
+        else if !ability.tap_to_activate && params.released && params.can_use && player.aimed_ability_drag_hint == null {
             now := get_time();
             if player.failed_aimed_ability_tap_count > 0 && now - player.last_failed_aimed_ability_tap_time <= 5.0 {
                 player.failed_aimed_ability_tap_count = 0;
@@ -3648,6 +4477,55 @@ update_ability_cooldowns :: proc(player: Player, dt: float) {
 
 
 Ability_Utilities :: struct {
+    // XZ aiming for a top-down 3D game. Primary: desktop hold-to-fire.
+    // Secondary: desktop key/button fires toward the mouse. Mobile: drag/release,
+    // or tap toward tap_direction (the game's nearest eligible target).
+    full_update_ground_aimed_ability :: proc(player: Player, ability: Ability_Base, params: ref Ability_Update_Params,
+        primary: bool, tap_direction: v2 = {}) -> Full_Aimed_Ability_Result {
+        result: Full_Aimed_Ability_Result;
+        result.direction = player.last_aim_direction;
+        if length_squared(result.direction) < 0.001 result.direction = {0,1};
+        aim := false;
+        fire := false;
+        if player.device_kind == .PC {
+            if primary {
+                input := update_aiming_ability(player,ref params,true);
+                aim = input.aim;
+                fire = input.activate && player.active_ability == null;
+            } else {
+                aim = params.hovering || params.clicked;
+                fire = params.clicked;
+            }
+            point, ok := screen_to_world_on_elevation(get_mouse_screen_position(),player.entity.world_position.y);
+            if ok {
+                delta := point-player.entity.world_position;
+                if length_squared(delta) > 0.001 result.direction = normalize(v2{delta.x,delta.z});
+            }
+        } else {
+            update_targeted_ability(player,ability,ref params);
+            dragging := ability.max_drag_offset_this_press > AIMED_ABILITY_DRAG_THRESHOLD;
+            if dragging && (params.active || params.released) {
+                screen, visible := world_to_screen(player.entity.world_position);
+                from, from_ok := screen_to_world_on_elevation(screen,player.entity.world_position.y);
+                to, to_ok := screen_to_world_on_elevation(screen+params.drag_direction*100,player.entity.world_position.y);
+                if visible && from_ok && to_ok {
+                    delta := to-from;
+                    if length_squared(delta) > 0.001 result.direction = normalize(v2{delta.x,delta.z});
+                }
+                aim = params.active;
+                fire = params.released;
+            } else if ability.tap_to_activate && params.clicked {
+                if length_squared(tap_direction) > 0.001 result.direction = normalize(tap_direction);
+                fire = true;
+            }
+            if params.released && player.active_ability == ability player.active_ability = null;
+        }
+        result.aim = aim || fire;
+        if result.aim player.last_aim_direction = result.direction;
+        result.activate = fire && params.can_use;
+        return result;
+    }
+
     Aiming_Ability_Result :: struct {
         aim:      bool;
         activate: bool;
@@ -3655,7 +4533,7 @@ Ability_Utilities :: struct {
         aim_direction: v2;
     }
     
-    update_aiming_ability :: proc(player: Player, params: ref Ability_Update_Params) -> Aiming_Ability_Result {
+    update_aiming_ability :: proc(player: Player, params: ref Ability_Update_Params, ground_aim: bool = false) -> Aiming_Ability_Result {
         result: Aiming_Ability_Result;
         if player.device_kind == .PC {
             UI.push_layer(-1000);
@@ -3667,7 +4545,7 @@ Ability_Utilities :: struct {
 
             if interact.hovering {
                 result.aim = true;
-                result.aim_direction = normalize(get_mouse_world_position() - player.entity.world_position);
+                if !ground_aim result.aim_direction = normalize(get_mouse_world_position() - player.entity.world_position.xy);
             }
 
             if interact.active {
@@ -3758,7 +4636,7 @@ Ability_Utilities :: struct {
             if aiming.aim {
                 previous_aim_direction := player.last_aim_direction;
                 player.last_aim_direction = aiming.aim_direction;
-                draw_aiming_line(player.entity.world_position, aiming.aim_direction, 1.0 / player.camera.size * 4, player.entity.calculate_interpolation_offset(), previous_aim_direction, 1.0 / player.camera.size_last_frame * 4);
+                draw_aiming_line(player.entity.world_position.xy, aiming.aim_direction, 1.0 / player.camera.size * 4, player.entity.calculate_interpolation_offset().xy, previous_aim_direction, 1.0 / player.camera.size_last_frame * 4);
             }
             if aiming.activate {
                 player.active_ability = null;
@@ -3773,6 +4651,7 @@ Ability_Utilities :: struct {
     Full_Aimed_Ability_Result :: struct {
         direction: v2;
         activate: bool;
+        aim: bool;
     }
 
     // On mobile: press and hold and drag to aim, activate on release
@@ -3782,10 +4661,11 @@ Ability_Utilities :: struct {
         if player.active_ability == null {
             aiming := Ability_Utilities.update_aiming_ability(player, ref params);
             result.direction = aiming.aim_direction;
+            result.aim = aiming.aim;
             if aiming.aim {
                 previous_aim_direction := player.last_aim_direction;
                 player.last_aim_direction = aiming.aim_direction;
-                draw_thin_aiming_line(player.entity.world_position, aiming.aim_direction, 1.0 / player.camera.size * 4, player.entity.calculate_interpolation_offset(), previous_aim_direction, 1.0 / player.camera.size_last_frame * 4);
+                draw_thin_aiming_line(player.entity.world_position.xy, aiming.aim_direction, 1.0 / player.camera.size * 4, player.entity.calculate_interpolation_offset().xy, previous_aim_direction, 1.0 / player.camera.size_last_frame * 4);
             }
             if aiming.activate {
                 if params.can_use {
@@ -3832,10 +4712,10 @@ Tutorial_Arrow :: struct {
         defer UI.pop_interpolation_offset();
 
         max_distance := player.camera.size * 0.8;
-        offset_to_target := normalize_vector_to_radius(target_position - player.entity.world_position, max_distance) * max_distance;
-        arrow_position := player.entity.world_position + offset_to_target;
+        offset_to_target := normalize_vector_to_radius(target_position - player.entity.world_position.xy, max_distance) * max_distance;
+        arrow_position := player.entity.world_position.xy + offset_to_target;
 
-        previous_player_position := player.entity.world_position - player.entity.calculate_interpolation_offset();
+        previous_player_position := player.entity.world_position.xy - player.entity.calculate_interpolation_offset().xy;
         previous_target_position := target_position - target_offset_from_last_frame;
         previous_max_distance := player.camera.size_last_frame * 0.8;
         previous_offset_to_target := normalize_vector_to_radius(previous_target_position - previous_player_position, previous_max_distance) * previous_max_distance;
@@ -3843,7 +4723,7 @@ Tutorial_Arrow :: struct {
 
         alpha := options.alpha;
         if options.fade_out_based_on_aim_direction {
-            aim_d := dot(player.last_aim_direction, normalize(target_position - player.entity.world_position));
+            aim_d := dot(player.last_aim_direction, normalize(target_position - player.entity.world_position.xy));
             alpha_t := linear_step(0.85, 1.0, aim_d);
             alpha *= lerp(1.0, 0.25, alpha_t);
         }
@@ -3902,7 +4782,7 @@ Tutorial_Arrow :: struct {
     }
 
     draw :: proc(player: Player, target: Entity, options: Tutorial_Arrow_Options) {
-        Tutorial_Arrow.draw(player, target.world_position, options, target.calculate_interpolation_offset());
+        Tutorial_Arrow.draw(player, target.world_position.xy, options, target.calculate_interpolation_offset().xy);
     }
 }
 
@@ -4423,27 +5303,27 @@ UIK :: struct {
     }
 
     #deprecate_soft "Use Text_Desc.set_halign()."
-    text_set_halign :: proc(d: *Text_Desc, align: Text_Settings.Horizontal_Alignment) {
+    text_set_halign :: proc(d: *Text_Desc, align: Text_Settings.Horizontal_Alignment) #unsafe {
         d.*.set_halign(align);
     }
 
     #deprecate_soft "Use Text_Desc.set_valign()."
-    text_set_valign :: proc(d: *Text_Desc, align: Text_Settings.Vertical_Alignment) {
+    text_set_valign :: proc(d: *Text_Desc, align: Text_Settings.Vertical_Alignment) #unsafe {
         d.*.set_valign(align);
     }
 
     #deprecate_soft "Use Text_Desc.set_size_mult()."
-    text_set_size_mult :: proc(d: *Text_Desc, mult: float) {
+    text_set_size_mult :: proc(d: *Text_Desc, mult: float) #unsafe {
         d.*.set_size_mult(mult);
     }
 
     #deprecate_soft "Use Text_Desc.set_color()."
-    text_set_color :: proc(d: *Text_Desc, color: v4) {
+    text_set_color :: proc(d: *Text_Desc, color: v4) #unsafe {
         d.*.set_color(color);
     }
 
     #deprecate_soft "Use Text_Desc.set_word_wrap()."
-    text_set_word_wrap :: proc(d: *Text_Desc, wrap: bool) {
+    text_set_word_wrap :: proc(d: *Text_Desc, wrap: bool) #unsafe {
         d.*.set_word_wrap(wrap);
     }
 
@@ -4753,7 +5633,7 @@ UIK :: struct {
 
     text :: proc(desc: Text_Desc, fmt: string, args: [^]any = {}) #foreign "uik_text_args";
 
-    toggle :: proc(id: string, label: string, value: *bool, desc: Widget_Desc) -> Interact_Result #foreign "uik_toggle";
+    toggle :: proc(id: string, label: string, value: ref bool, desc: Widget_Desc) -> Interact_Result #foreign "uik_toggle_ref";
     image :: proc(texture: Texture_Asset, tint: v4 = {1, 1, 1, 1}) #foreign "uik_image";
     image_nine :: proc(texture: Texture_Asset, nine_slice: Texture_Nine_Slice_Data, tint: v4 = {1, 1, 1, 1}) #foreign "uik_image_nine";
     spacer :: proc(width: Size, height: Size) #foreign "uik_spacer";
@@ -4802,11 +5682,13 @@ UIK :: struct {
     overlay_begin :: proc(anchor: Overlay_Anchor, desc: Panel_Desc, offset: v2 = {0, 0}) #foreign "uik_overlay_begin_desc";
     overlay_begin :: proc(anchor: Overlay_Anchor, desc: Panel_Desc, offset: v2, align_x: Content_Align, align_y: Content_Align) #foreign "uik_overlay_begin_aligned";
     overlay_end :: proc() #foreign "uik_overlay_end";
-    tab_bar_begin :: proc(id: string, active_index: *s64, active_style: Panel_Background_Kind = .BUTTON_TAB_MED_YELLOW, inactive_style: Panel_Background_Kind = .BUTTON_TAB_MED_GREY) #foreign "uik_tab_bar_begin";
-    tab_bar_begin_desc :: proc(id: string, active_index: *s64, desc: Panel_Desc, active_style: Panel_Background_Kind = .BUTTON_TAB_MED_YELLOW, inactive_style: Panel_Background_Kind = .BUTTON_TAB_MED_GREY) #foreign "uik_tab_bar_begin_desc";
+    // Pass the current selection by value, then assign the result of tab_bar_end().
+    // Like other UIK widgets, tabs consume the previous completed UI interaction.
+    tab_bar_begin :: proc(id: string, active_index: s64, active_style: Panel_Background_Kind = .BUTTON_TAB_MED_YELLOW, inactive_style: Panel_Background_Kind = .BUTTON_TAB_MED_GREY) #foreign "uik_tab_bar_begin_value";
+    tab_bar_begin_desc :: proc(id: string, active_index: s64, desc: Panel_Desc, active_style: Panel_Background_Kind = .BUTTON_TAB_MED_YELLOW, inactive_style: Panel_Background_Kind = .BUTTON_TAB_MED_GREY) #foreign "uik_tab_bar_begin_desc_value";
     tab :: proc(label: string, index: s64) -> Interact_Result #foreign "uik_tab";
     tab :: proc(label: string, index: s64, desc: Widget_Desc) -> Interact_Result #foreign "uik_tab_desc";
-    tab_bar_end :: proc() #foreign "uik_tab_bar_end";
+    tab_bar_end :: proc() -> s64 #foreign "uik_tab_bar_end_value";
     currency :: proc(icon: Texture_Asset, amount: s64, desc: Text_Desc) #foreign "uik_currency";
 
     title_desc :: proc(style: Title_Banner_Style, tint: v4) -> Title_Desc {
@@ -5035,10 +5917,16 @@ UIK :: struct {
 
 
     rect_window :: proc() -> Rect {
+        if UI.get_screen_rect().height() > UI.get_screen_rect().width() {
+            return UI.get_safe_screen_rect().inset(32);
+        }
         return UI.get_safe_screen_rect().center_rect().grow(440, 650, 440, 650);
     }
 
     rect_window_large :: proc() -> Rect {
+        if UI.get_screen_rect().height() > UI.get_screen_rect().width() {
+            return UI.get_safe_screen_rect().inset(32);
+        }
         return UI.get_safe_screen_rect().inset(100, 200, 100, 200);
     }
 
@@ -5055,10 +5943,16 @@ UIK :: struct {
     }
 
     rect_topbar :: proc() -> Rect {
+        if UI.get_screen_rect().height() > UI.get_screen_rect().width() {
+            return UI.get_safe_screen_rect().inset(15).top_rect().grow_bottom(150);
+        }
         return UI.get_safe_screen_rect().top_center_rect().grow_bottom(150).grow(0, 550, 0, 550).offset(0, -15);
     }
 
     rect_hotbar :: proc() -> Rect {
+        if UI.get_screen_rect().height() > UI.get_screen_rect().width() {
+            return UI.get_safe_screen_rect().inset(15).bottom_rect().grow_top(150);
+        }
         return UI.get_safe_screen_rect().bottom_center_rect().grow_top(150).grow(0, 450, 0, 450).offset(0, 15);
     }
 
@@ -5094,7 +5988,7 @@ Particle_Emission :: struct {
         return result;
     }
 
-    get_slot_count :: method(maximum_lifetime: float) -> int {
+    get_slot_count :: method #read_only_this (maximum_lifetime: float) -> int {
         if kind == .BURST {
             return burst_count;
         }
@@ -5132,6 +6026,8 @@ Particle_System_Desc :: struct {
         alive: bool;
         life_index: int;
         position: v2;
+        elevation: float;
+        get_position_3d :: method() -> v3 { return {position.x, position.y, elevation}; }
         half_size: v2;
         color: v4;
         rotation_degrees: float;
@@ -5139,17 +6035,19 @@ Particle_System_Desc :: struct {
 
     Sampling_Context :: struct {
         direction: v2;
+        direction_elevation: float;
         use_friction: bool;
         friction_coefficient: float;
         inverse_friction_coefficient: float;
         terminal_velocity: v2;
+        terminal_velocity_elevation: float;
     }
 
     World_Slot :: struct {
         has_birth: bool #foreign;
         life_index: int #foreign;
-        birth_position: v2 #foreign;
-    } #foreign_struct "CSL_Particle_System_World_Slot"
+        birth_position: v3 #foreign;
+    } #foreign_struct "CSL_Particle_System_World_Slot_3D"
 
     State :: struct {
         initialized: bool;
@@ -5160,14 +6058,14 @@ Particle_System_Desc :: struct {
 
         // WORLD emitters need only one birth origin per reusable particle slot.
         world_slots: [..]World_Slot;
-        last_emitter_position: v2;
+        last_emitter_position: v3;
         last_update_time: float;
     }
 
     Native_Draw_Args :: struct {
         seed: u64 #foreign;
         start_time: float #foreign;
-        emitter_position: v2 #foreign;
+        emitter_position: v3 #foreign;
         time: float #foreign;
         previous_time: float #foreign;
         particle_count: int #foreign;
@@ -5179,11 +6077,11 @@ Particle_System_Desc :: struct {
         spawn_position_radius: float #foreign;
         color_start: v4 #foreign;
         color_end: v4 #foreign;
-        direction: v2 #foreign;
+        direction: v3 #foreign;
         use_friction: bool #foreign;
         friction_coefficient: float #foreign;
         inverse_friction_coefficient: float #foreign;
-        terminal_velocity: v2 #foreign;
+        terminal_velocity: v3 #foreign;
         direction_spread_degrees: float #foreign;
         initial_rotation_min: float #foreign;
         initial_rotation_max: float #foreign;
@@ -5196,14 +6094,19 @@ Particle_System_Desc :: struct {
         face_direction: bool #foreign;
         fade_in_seconds: float #foreign;
         fade_out_seconds: float #foreign;
-        gravity: v2 #foreign;
+        gravity: v3 #foreign;
         size_start: v2 #foreign;
         size_end: v2 #foreign;
         sprite: Texture_Asset #foreign;
-    } #foreign_struct "CSL_Particle_System_Draw_Args"
+        emitter_entity: Entity #foreign;
+        spawn_height: float #foreign;
+        render_mode: Render_Mode #foreign;
+        depth_offset: float #foreign;
+        shadow_flags: u8 #foreign;
+    } #foreign_struct "CSL_Particle_System_Draw_Args_3D"
 
-    draw_native :: proc(args: Native_Draw_Args, world_slots: ref [..]World_Slot) #foreign "particle_system_draw_native";
-    update_world_birth_positions_native :: proc(start_time: float, time: float, emitter_position: v2, particle_count: int, emission_kind: int, emission_rate: float, prewarm: bool, world_slots: ref [..]World_Slot, last_emitter_position: ref v2, last_update_time: ref float) #foreign "particle_system_update_world_birth_positions_native";
+    draw_native :: proc(args: Native_Draw_Args, world_slots: ref [..]World_Slot) #foreign "particle_system_draw_3d_native";
+    update_world_birth_positions_native :: proc(start_time: float, time: float, emitter_position: v3, particle_count: int, emission_kind: int, emission_rate: float, prewarm: bool, world_slots: ref [..]World_Slot, last_emitter_position: ref v3, last_update_time: ref float) #foreign "particle_system_update_world_birth_positions_3d_native";
 
     range_float :: proc(value: float) -> Range(float) {
         return {value, value};
@@ -5244,6 +6147,18 @@ Particle_System_Desc :: struct {
         // Each particle keeps the emitter position from the moment it spawned.
         WORLD;
     };
+
+    render_mode: Render_Mode;
+    cast_shadows: bool;
+    receive_shadows: bool;
+    spawn_elevation: float;
+    spawn_height: float;
+    direction_elevation: float;
+    gravity_elevation: float;
+
+    set_spawn_offset_3d :: method(value: v3) { spawn_offset = {value.x, value.y}; spawn_elevation = value.z; }
+    set_direction_3d :: method(value: v3) { direction = {value.x, value.y}; direction_elevation = value.z; }
+    set_gravity_3d :: method(value: v3) { gravity = {value.x, value.y}; gravity_elevation = value.z; }
 
     seed_salt: u64;
     spawn_offset: v2;
@@ -5497,11 +6412,11 @@ Particle_System_Desc :: struct {
         return desc;
     }
 
-    get_particle_count :: method() -> int {
+    get_particle_count :: method #read_only_this () -> int {
         return emission.get_slot_count(lifetime.max);
     }
 
-    validation_error :: method() -> string {
+    validation_error :: method #read_only_this () -> string {
         if emission.kind == .NONE {
             return "Particle system emission was not configured; use Particle_Emission.burst() or Particle_Emission.continuous()";
         }
@@ -5526,7 +6441,7 @@ Particle_System_Desc :: struct {
         if angular_velocity_degrees.max < angular_velocity_degrees.min {
             return format_string("Particle system angular velocity range was reversed: % to %", {angular_velocity_degrees.min, angular_velocity_degrees.max});
         }
-        if length_squared(direction) <= 0.000001 {
+        if length_squared(direction) + direction_elevation * direction_elevation <= 0.000001 {
             return "Particle system direction must be non-zero";
         }
         if direction_spread_degrees < 0 {
@@ -5534,6 +6449,9 @@ Particle_System_Desc :: struct {
         }
         if spawn_rect_size.x < 0 || spawn_rect_size.y < 0 {
             return format_string("Particle system spawn_rect_size must be non-negative, got %", {spawn_rect_size});
+        }
+        if spawn_height < 0 {
+            return format_string("Particle system spawn_height must be non-negative, got %", {spawn_height});
         }
         if spawn_position_radius < 0 {
             return format_string("Particle system spawn_position_radius must be non-negative, got %", {spawn_position_radius});
@@ -5550,17 +6468,17 @@ Particle_System_Desc :: struct {
         return "";
     }
 
-    try_validate :: method(error: ref string) -> bool {
+    try_validate :: method #read_only_this (error: ref string) -> bool {
         error = this.validation_error();
         return error.count == 0;
     }
 
-    assert_valid :: method() {
+    assert_valid :: method #read_only_this () {
         error := this.validation_error();
         assert(error.count == 0, "%", {error});
     }
 
-    get_timing :: method(start_time: float, time: float, particle_index: int) -> Timing {
+    get_timing :: method #read_only_this (start_time: float, time: float, particle_index: int) -> Timing {
         result: Timing;
         elapsed := time - start_time;
         if elapsed < 0 {
@@ -5591,23 +6509,30 @@ Particle_System_Desc :: struct {
         return result;
     }
 
-    is_finished :: method(start_time: float, time: float) -> bool {
+    is_finished :: method #read_only_this (start_time: float, time: float) -> bool {
         return emission.kind == .BURST && time - start_time >= lifetime.max;
     }
 
-    make_sampling_context :: method() -> Sampling_Context {
+    make_sampling_context :: method #read_only_this () -> Sampling_Context {
         result: Sampling_Context;
-        result.direction = normalize(direction);
+        direction_3d := normalize(v3{direction.x, direction.y, direction_elevation});
+        result.direction = {direction_3d.x, direction_3d.y};
+        result.direction_elevation = direction_3d.z;
         result.use_friction = friction != 0;
         if result.use_friction {
             result.friction_coefficient = -Math.log(1 - friction) * 60;
             result.inverse_friction_coefficient = 1.0 / result.friction_coefficient;
             result.terminal_velocity = gravity * result.inverse_friction_coefficient;
+            result.terminal_velocity_elevation = gravity_elevation * result.inverse_friction_coefficient;
         }
         return result;
     }
 
-    sample :: method(seed: u64, start_time: float, context: Sampling_Context, emitter_position: v2, time: float, particle_index: int) -> Sample {
+    sample :: method #read_only_this (seed: u64, start_time: float, context: Sampling_Context, emitter_position: v2, time: float, particle_index: int) -> Sample {
+        return this.sample_3d(seed, start_time, context, {emitter_position.x, emitter_position.y, 0}, time, particle_index);
+    }
+
+    sample_3d :: method #read_only_this (seed: u64, start_time: float, context: Sampling_Context, emitter_position: v3, time: float, particle_index: int) -> Sample {
         result: Sample;
         timing := this.get_timing(start_time, time, particle_index);
         if !timing.spawned {
@@ -5623,7 +6548,7 @@ Particle_System_Desc :: struct {
             return result;
         }
 
-        start_position := emitter_position;
+        start_position := v2{emitter_position.x, emitter_position.y};
         start_position += v2.{
             (rng_range_float(ref life_rng, 0, 1) - 0.5) * spawn_rect_size.x,
             (rng_range_float(ref life_rng, 0, 1) - 0.5) * spawn_rect_size.y,
@@ -5642,11 +6567,13 @@ Particle_System_Desc :: struct {
         if !context.use_friction {
             result.position = start_position + initial_velocity * timing.age + gravity * (0.5 * timing.age * timing.age);
             velocity = initial_velocity + gravity * timing.age;
+            result.elevation = emitter_position.z + context.direction_elevation * particle_speed * timing.age + gravity_elevation * (0.5 * timing.age * timing.age);
         }
         else {
             decay := Math.exp(-context.friction_coefficient * timing.age);
             result.position = start_position + (initial_velocity - context.terminal_velocity) * ((1 - decay) * context.inverse_friction_coefficient) + context.terminal_velocity * timing.age;
             velocity = (initial_velocity - context.terminal_velocity) * decay + context.terminal_velocity;
+            result.elevation = emitter_position.z + (context.direction_elevation * particle_speed - context.terminal_velocity_elevation) * ((1 - decay) * context.inverse_friction_coefficient) + context.terminal_velocity_elevation * timing.age;
         }
 
         lifetime_t := timing.age / particle_lifetime;
@@ -5664,13 +6591,20 @@ Particle_System_Desc :: struct {
             result.rotation_degrees += angular_velocity * timing.age;
         }
 
+        if spawn_height != 0 {
+            result.elevation += (rng_range_float(ref life_rng, 0, 1) - 0.5) * spawn_height;
+        }
         result.alive = true;
         result.life_index = timing.life_index;
         result.half_size = lerp(size_over_lifetime.start, size_over_lifetime.end, lifetime_t) * 0.5;
         return result;
     }
 
-    draw :: method(state: State, emitter_position: v2, time: float) {
+    draw :: method #read_only_this (state: State, emitter_position: v2, time: float) {
+        this.draw_3d(state, {emitter_position.x, emitter_position.y, 0}, time);
+    }
+
+    draw_3d :: method #read_only_this (state: State, emitter_position: v3, time: float, depth_offset: float = 0, emitter_entity: Entity = null) {
         assert(state.initialized, "Particle system state was not initialized; call Particle_System_Component.restart()");
         particle_count := this.get_particle_count();
         assert(state.configured_slot_count == particle_count, "Particle system slot count changed from % to % without play()", {state.configured_slot_count, particle_count});
@@ -5696,11 +6630,11 @@ Particle_System_Desc :: struct {
         args.spawn_position_radius = spawn_position_radius;
         args.color_start = color_over_lifetime.start;
         args.color_end = color_over_lifetime.end;
-        args.direction = context.direction;
+        args.direction = {context.direction.x, context.direction.y, context.direction_elevation};
         args.use_friction = context.use_friction;
         args.friction_coefficient = context.friction_coefficient;
         args.inverse_friction_coefficient = context.inverse_friction_coefficient;
-        args.terminal_velocity = context.terminal_velocity;
+        args.terminal_velocity = {context.terminal_velocity.x, context.terminal_velocity.y, context.terminal_velocity_elevation};
         args.direction_spread_degrees = direction_spread_degrees;
         args.initial_rotation_min = initial_rotation_degrees.min;
         args.initial_rotation_max = initial_rotation_degrees.max;
@@ -5713,10 +6647,15 @@ Particle_System_Desc :: struct {
         args.face_direction = face_direction;
         args.fade_in_seconds = fade_in_seconds;
         args.fade_out_seconds = fade_out_seconds;
-        args.gravity = gravity;
+        args.gravity = {gravity.x, gravity.y, gravity_elevation};
         args.size_start = size_over_lifetime.start;
         args.size_end = size_over_lifetime.end;
         args.sprite = sprite;
+        args.emitter_entity = emitter_entity;
+        args.spawn_height = spawn_height;
+        args.render_mode = render_mode;
+        args.depth_offset = depth_offset;
+        args.shadow_flags = (cast_shadows ? 0 : 1).(u8) | (receive_shadows ? 0 : 2).(u8);
         draw_native(args, ref state.world_slots);
     }
 }
@@ -5732,10 +6671,19 @@ Particle_System_Component :: class : Component {
     }
 
     emitter_position :: method() -> v2 {
-        return entity.world_position + desc.spawn_offset;
+        return entity.world_position.xy + desc.spawn_offset;
+    }
+
+    emitter_position_3d :: method() -> v3 {
+        xy := this.emitter_position();
+        return {xy.x, xy.y, entity.world_position.z + desc.spawn_elevation};
     }
 
     update_world_birth_positions :: method(time: float, emitter_position: v2) {
+        this.update_world_birth_positions_3d(time, {emitter_position.x, emitter_position.y, this.emitter_position_3d().z});
+    }
+
+    update_world_birth_positions_3d :: method(time: float, emitter_position: v3) {
         if desc.simulation_space != .WORLD {
             return;
         }
@@ -5776,10 +6724,10 @@ Particle_System_Component :: class : Component {
             }
         }
 
-        emitter_position := this.emitter_position();
+        emitter_position := this.emitter_position_3d();
         state.last_emitter_position = emitter_position;
         state.last_update_time = state.start_time;
-        this.update_world_birth_positions(state.start_time, emitter_position);
+        this.update_world_birth_positions_3d(state.start_time, emitter_position);
         set_enabled(true);
     }
 
@@ -5810,7 +6758,7 @@ Particle_System_Component :: class : Component {
             return;
         }
         time := get_time();
-        this.update_world_birth_positions(time, this.emitter_position());
+        this.update_world_birth_positions_3d(time, this.emitter_position_3d());
         if desc.auto_disable_when_finished && desc.is_finished(state.start_time, time) {
             set_enabled(false);
         }
@@ -5827,17 +6775,17 @@ Particle_System_Component :: class : Component {
         UI.push_z(entity.world_position.y + z_offset);
         defer UI.pop_z();
 
-        emitter_position := this.emitter_position();
+        emitter_position := this.emitter_position_3d();
         if desc.simulation_space == .WORLD {
             UI.push_interpolation_offset({});
             defer UI.pop_interpolation_offset();
             // Birth positions are authoritative only through the latest sim update.
             // Holding analytical sampling at that watermark keeps legal start/enable
             // lifecycle gaps render-safe without mutating deterministic state here.
-            desc.draw(state, emitter_position, min(get_time(), state.last_update_time));
+            desc.draw_3d(state, emitter_position, min(get_time(), state.last_update_time), z_offset, entity);
         }
         else {
-            desc.draw(state, emitter_position, get_time());
+            desc.draw_3d(state, emitter_position, get_time(), z_offset, entity);
         }
     }
 }

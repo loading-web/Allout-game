@@ -1,0 +1,108 @@
+Game_Player_Frame :: struct {
+    source: v2;
+    size: v2;
+    trim: v2;
+    canvas: v2;
+}
+Game_Player_Animation :: class {
+    name: string;
+    frames: [..]Game_Player_Frame;
+}
+Game_Player_Definition :: class {
+    spine_path: string;
+    texture_path: string;
+    sheet_size: v2;
+    animations: [..]Game_Player_Animation;
+}
+
+// Metadata is generated at import time because CSL has no raw XML/file API.
+// Frames remain on the original PNG: no extracted images or atlas/Spine conversion.
+Game_Player_Character :: class : Component {
+    rig: Spine_Animator;
+    definition: Game_Player_Definition;
+    texture: Texture_Asset;
+    active: bool;
+    animation: int = -1;
+    elapsed: float;
+    fps: float = 24;
+    looping: bool = true;
+
+    ao_start :: method() {
+        definition = load_game_player_definition();
+        if definition.spine_path.count > 0 {
+            asset := get_asset(Spine_Asset, definition.spine_path);
+            if asset == null { log_info("[game_player] Missing Spine: " + definition.spine_path); return; }
+            rig.set_skeleton(asset);
+            rig.enable_skin("base/crewchsia"); rig.refresh_skins();
+            rig.set_animation("Idle",true,0);
+            return;
+        }
+        if definition.texture_path.count == 0 { return; }
+        texture = get_asset(Texture_Asset, definition.texture_path);
+        if texture == null { log_info("[game_player] Missing texture: " + definition.texture_path); return; }
+        if definition.animations.count == 0 { log_info("[game_player] XML contains no animations"); return; }
+        active = true;
+        rig.set_enabled(false);
+        for a: definition.animations { log_info(`[game_player] Animation {a.name}: {a.frames.count} frames`); }
+        play("Idle");
+        if animation < 0 { play(definition.animations[0].name); }
+    }
+
+    // Exact names are preserved, including spaces and punctuation.
+    play :: method(name: string, loop: bool = true) -> bool {
+        if !active { return false; }
+        for a, i: definition.animations {
+            if a.name == name {
+                if animation != i { animation = i; elapsed = 0; }
+                looping = loop;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pose :: method(direction: int, singing: bool, speed: float) {
+        fps = 24 * max(0.01, speed);
+        if singing {
+            names: [4]string = {"singLEFT", "singDOWN", "singUP", "singRIGHT"};
+            if play(names[clamp(direction,0,3)]) { return; }
+            names = {"Left", "Down", "Up", "Right"};
+            if play(names[clamp(direction,0,3)]) { return; }
+        }
+        if play("Idle") { return; }
+        if play("idle") { return; }
+        if definition.animations.count > 0 { play(definition.animations[0].name); }
+    }
+
+    ao_update :: method(dt: float) { elapsed += dt; }
+
+    point :: method(p: v2) -> v2 {
+        s := entity.world_scale;
+        v := v2{p.x*s.x,p.y*s.y};
+        angle := to_radians(entity.world_rotation);
+        return entity.world_position.xy + v2{v.x*cos(angle)-v.y*sin(angle),v.x*sin(angle)+v.y*cos(angle)};
+    }
+
+    ao_draw :: method(dt: float) {
+        if !active || texture == null || animation < 0 || !entity.get_world_enabled() { return; }
+        a := definition.animations[animation];
+        index := floor(elapsed*fps).(int);
+        if looping { index %= a.frames.count; } else { index = min(index,a.frames.count-1); }
+        f := a.frames[index];
+        // Sparrow trim offsets are negative. Restore the untrimmed bottom-center pivot.
+        lo := v2{-f.canvas.x*0.5-f.trim.x, f.canvas.y+f.trim.y-f.size.y} / 240;
+        hi := lo + f.size/240;
+        uv_lo, uv_hi := texture.get_uvs();
+        span := uv_hi-uv_lo;
+        u0 := uv_lo.x + f.source.x/definition.sheet_size.x*span.x;
+        u1 := uv_lo.x + (f.source.x+f.size.x)/definition.sheet_size.x*span.x;
+        v0 := uv_lo.y + f.source.y/definition.sheet_size.y*span.y;
+        v1 := uv_lo.y + (f.source.y+f.size.y)/definition.sheet_size.y*span.y;
+        UI.push_world_draw_context(); defer UI.pop_draw_context();
+        UI.push_z(entity.world_position.y); defer UI.pop_z();
+        quads := new(Quad_Data,1);
+        quads[0] = Quad_Data{p1=point({lo.x,hi.y}),p2=point(hi),p3=point({hi.x,lo.y}),p4=point(lo),
+            uv1={u0,v0},uv2={u1,v0},uv3={u1,v1},uv4={u0,v1},color={1,1,1,1},texture=texture};
+        UI.quads(quads);
+    }
+}
